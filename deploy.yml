@@ -16,14 +16,12 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      # Inject prod credentials dari GitHub Secrets ke config.js
       - name: Create config.js
         run: |
-          cat > js/config.js << CONF
-          const SUPABASE_URL = '${{ secrets.SUPABASE_URL }}';
-          const SUPABASE_ANON_KEY = '${{ secrets.SUPABASE_ANON_KEY }}';
-          const ENV = 'prod';
-          CONF
+          printf "const SUPABASE_URL = '%s';\nconst SUPABASE_ANON_KEY = '%s';\nconst ENV = 'prod';\n" \
+            "${{ secrets.SUPABASE_URL }}" \
+            "${{ secrets.SUPABASE_ANON_KEY }}" \
+            > js/config.js
 
       - name: Deploy to GitHub Pages
         uses: peaceiris/actions-gh-pages@v3
