@@ -351,10 +351,92 @@
     const { createClient } = supabase;
     const sb = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-    // Check if already logged in
-    sb.auth.getSession().then(({ data }) => {
-      if (data.session) window.location.href = 'pages/dashboard.html';
+    // ── Handle invite token ───────────────────────────────────────
+    // Supabase JS v2 otomatis proses hash token, kita listen via event
+    sb.auth.onAuthStateChange((event, session) => {
+      if (event === 'USER_UPDATED' || event === 'SIGNED_IN') {
+        // Cek apakah dari invite (user belum pernah login sebelumnya)
+        // Tandanya: URL masih ada #access_token dan type=invite
+        const hash = window.location.hash;
+        if (hash.includes('type=invite') || hash.includes('type=recovery')) {
+          // Bersihkan hash dari URL
+          history.replaceState(null, '', window.location.pathname);
+          showSetPasswordForm();
+          return;
+        }
+        // Login biasa — redirect ke dashboard
+        if (session) window.location.href = 'pages/dashboard.html';
+      }
     });
+
+    // Cek jika sudah login (bukan dari invite)
+    sb.auth.getSession().then(({ data }) => {
+      if (data.session && !window.location.hash.includes('type=invite')) {
+        window.location.href = 'pages/dashboard.html';
+      }
+    });
+
+    function showSetPasswordForm() {
+      // Sembunyikan login form, tampilkan set password form
+      document.querySelector('.card').innerHTML = `
+        <div style="text-align:center;margin-bottom:28px">
+          <div style="font-family:var(--font-display);font-size:22px;font-weight:800;margin-bottom:6px">
+            Set Your Password
+          </div>
+          <p style="color:var(--muted);font-size:13px">
+            Selamat datang! Buat password untuk akun kamu.
+          </p>
+        </div>
+        <div class="form-group" style="margin-bottom:16px">
+          <label style="font-size:12px;color:var(--muted);display:block;margin-bottom:6px">New Password</label>
+          <input type="password" id="new-password" placeholder="Minimum 8 karakter"
+            style="width:100%;padding:12px 14px;background:#0d1117;border:1px solid #1e2530;
+                   border-radius:10px;color:var(--text);font-size:14px;box-sizing:border-box"/>
+        </div>
+        <div class="form-group" style="margin-bottom:20px">
+          <label style="font-size:12px;color:var(--muted);display:block;margin-bottom:6px">Confirm Password</label>
+          <input type="password" id="confirm-password" placeholder="Ulangi password"
+            style="width:100%;padding:12px 14px;background:#0d1117;border:1px solid #1e2530;
+                   border-radius:10px;color:var(--text);font-size:14px;box-sizing:border-box"/>
+        </div>
+        <div id="setpw-msg" style="margin-bottom:12px;font-size:12px;min-height:18px"></div>
+        <button onclick="handleSetPassword()"
+          style="width:100%;padding:13px;background:var(--accent);color:#000;border:none;
+                 border-radius:10px;font-weight:700;font-size:14px;cursor:pointer;
+                 font-family:var(--font-display)">
+          Set Password & Login
+        </button>
+      `;
+    }
+
+    async function handleSetPassword() {
+      const pw  = document.getElementById('new-password').value;
+      const pw2 = document.getElementById('confirm-password').value;
+      const msg = document.getElementById('setpw-msg');
+
+      if (pw.length < 8) {
+        msg.style.color = 'var(--danger)';
+        msg.textContent = 'Password minimal 8 karakter';
+        return;
+      }
+      if (pw !== pw2) {
+        msg.style.color = 'var(--danger)';
+        msg.textContent = 'Password tidak cocok';
+        return;
+      }
+
+      const { error } = await sb.auth.updateUser({ password: pw });
+
+      if (error) {
+        msg.style.color = 'var(--danger)';
+        msg.textContent = 'Error: ' + error.message;
+        return;
+      }
+
+      msg.style.color = 'var(--accent)';
+      msg.textContent = '✓ Password berhasil di-set! Mengalihkan...';
+      setTimeout(() => window.location.href = 'pages/dashboard.html', 1500);
+    }
 
     function switchTab(tab) {
       document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));

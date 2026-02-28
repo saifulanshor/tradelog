@@ -301,7 +301,10 @@
             'Content-Type': 'application/json',
             'Authorization': `Bearer ${session.access_token}`,
           },
-          body: JSON.stringify({ email }),
+          body: JSON.stringify({
+            email,
+            redirectTo: `${window.location.origin}${window.location.pathname.replace('/pages/admin.html', '')}/pages/set-password.html`,
+          }),
         });
 
         const json = await res.json();
