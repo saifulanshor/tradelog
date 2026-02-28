@@ -23,4 +23,26 @@ async function applyLayout() {
   } catch (e) {
     console.warn('could not set active nav', e);
   }
+  // add a mobile toggle button (hamburger) that shows/hides sidebar
+  setupMobileMenu();
+}
+
+function setupMobileMenu() {
+  if (document.getElementById('mobile-menu-btn')) return; // only once
+  const btn = document.createElement('button');
+  btn.id = 'mobile-menu-btn';
+  btn.className = 'mobile-menu-btn';
+  btn.textContent = '☰';
+  btn.addEventListener('click', () => {
+    const sb = document.querySelector('.sidebar');
+    if (sb) sb.classList.toggle('open');
+  });
+  document.body.appendChild(btn);
+
+  // close sidebar when a link is tapped (mobile)
+  document.addEventListener('click', e => {
+    if (!e.target.matches('.sidebar .nav-item')) return;
+    const sb = document.querySelector('.sidebar');
+    if (sb && sb.classList.contains('open')) sb.classList.remove('open');
+  });
 }
