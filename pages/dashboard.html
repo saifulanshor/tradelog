@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Dashboard – TradeLog IDX</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Mono:wght@300;400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../css/shared.css"/>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+  <style>
+    .pnl-bar {
+      height: 6px;
+      background: var(--border);
+      border-radius: 3px;
+      overflow: hidden;
+      margin-top: 8px;
+    }
+    .pnl-fill {
+      height: 100%;
+      background: var(--accent);
+      border-radius: 3px;
+      transition: width 0.6s ease;
+    }
+    .chart-wrap { height: 200px; position: relative; }
+    .recent-label {
+      font-size: 10px;
+      letter-spacing: 0.15em;
+      color: var(--muted);
+      text-transform: uppercase;
+      margin-bottom: 12px;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- SIDEBAR -->
+  <aside class="sidebar">
+    <div class="sidebar-logo">
+      <div class="mark">IDX · Trading</div>
+      <h2>TRADE<span>LOG</span></h2>
+    </div>
+    <nav class="nav-section">
+      <div class="nav-label">Main</div>
+      <a class="nav-item active" href="dashboard.html"><span class="icon">◈</span> Dashboard</a>
+      <a class="nav-item" href="journal.html"><span class="icon">◎</span> Trade Journal</a>
+      <a class="nav-item" href="plan.html"><span class="icon">◇</span> Trading Plan</a>
+      <a class="nav-item" href="watchlist.html"><span class="icon">◉</span> Watchlist</a>
+    </nav>
+    <nav class="nav-section">
+      <div class="nav-label">Account</div>
+      <a class="nav-item" href="admin.html" id="admin-link" style="display:none"><span class="icon">⬡</span> Admin Panel</a>
+      <button class="nav-item" onclick="signOut()"><span class="icon">→</span> Sign Out</button>
+    </nav>
+    <div class="sidebar-footer">
+      <div class="user-chip">
+        <div class="user-avatar" id="avatar">?</div>
+        <div class="user-info">
+          <div class="user-email" id="user-email">Loading...</div>
+        </div>
+      </div>
+    </div>
+  </aside>
+
+  <!-- MAIN -->
+  <main class="main">
+    <div class="page-header">
+      <h1>Dashboard</h1>
+      <p id="date-display">Loading...</p>
+    </div>
+
+    <!-- STATS ROW -->
+    <div class="grid-4 mb-6">
+      <div class="stat-card">
+        <div class="stat-label">Total Trades</div>
+        <div class="stat-value" id="stat-total">—</div>
+        <div class="stat-change">All time</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Win Rate</div>
+        <div class="stat-value up" id="stat-winrate">—</div>
+        <div class="pnl-bar"><div class="pnl-fill" id="wr-bar" style="width:0%"></div></div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Total P&L</div>
+        <div class="stat-value" id="stat-pnl">—</div>
+        <div class="stat-change">Realized</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Avg R:R</div>
+        <div class="stat-value" id="stat-rr">—</div>
+        <div class="stat-change">Risk/Reward</div>
+      </div>
+    </div>
+
+    <!-- CHARTS ROW -->
+    <div class="grid-2 mb-6">
+      <div class="card">
+        <div class="card-title">Cumulative P&L</div>
+        <div class="chart-wrap"><canvas id="pnl-chart"></canvas></div>
+      </div>
+      <div class="card">
+        <div class="card-title">Win / Loss Distribution</div>
+        <div class="chart-wrap"><canvas id="wr-chart"></canvas></div>
+      </div>
+    </div>
+
+    <!-- RECENT TRADES -->
+    <div class="card">
+      <div class="flex-between mb-4">
+        <div class="card-title" style="margin-bottom:0">Recent Trades</div>
+        <a href="journal.html" class="btn btn-ghost" style="font-size:12px;padding:6px 14px">View All →</a>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Date</th>
+              <th>Ticker</th>
+              <th>Entry</th>
+              <th>Exit</th>
+              <th>P&L (IDR)</th>
+              <th>Result</th>
+            </tr>
+          </thead>
+          <tbody id="recent-tbody">
+            <tr><td colspan="7"><div class="empty-state"><div class="icon">◎</div><p>No trades yet</p></div></td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </main>
+
+  <script src="../js/config.js"></script>
+  <script src="../js/auth.js"></script>
+  <script>
+    // ─── Init ───
+    (async () => {
+      const user = await initAuth();
+      if (!user) return;
+
+      // Set user info
+      document.getElementById('user-email').textContent = user.email;
+      document.getElementById('avatar').textContent = user.email[0].toUpperCase();
+
+      // Check if admin
+      const { data: profile } = await sb.from('profiles').select('role').eq('id', user.id).single();
+      if (profile?.role === 'admin') document.getElementById('admin-link').style.display = 'flex';
+
+      // Date
+      document.getElementById('date-display').textContent = new Date().toLocaleDateString('id-ID', { weekday:'long', year:'numeric', month:'long', day:'numeric' });
+
+      // Load trades
+      const { data: trades } = await sb.from('trades').select('*').eq('user_id', user.id).order('trade_date', { ascending: false });
+
+      if (!trades || trades.length === 0) {
+        renderEmptyCharts();
+        return;
+      }
+
+      // Compute stats
+      const closed = trades.filter(t => t.status === 'closed');
+      const wins = closed.filter(t => t.pnl > 0);
+      const losses = closed.filter(t => t.pnl <= 0);
+      const totalPnl = closed.reduce((s, t) => s + (t.pnl || 0), 0);
+      const winRate = closed.length ? (wins.length / closed.length * 100) : 0;
+      const avgRR = closed.length ? (closed.reduce((s, t) => s + (t.rr || 0), 0) / closed.length) : 0;
+
+      document.getElementById('stat-total').textContent = trades.length;
+      document.getElementById('stat-winrate').textContent = winRate.toFixed(1) + '%';
+      document.getElementById('wr-bar').style.width = winRate + '%';
+      document.getElementById('stat-pnl').textContent = formatIDR(totalPnl);
+      document.getElementById('stat-pnl').className = 'stat-value ' + (totalPnl >= 0 ? 'up' : 'down');
+      document.getElementById('stat-rr').textContent = avgRR.toFixed(2) + 'R';
+
+      // Cumulative P&L chart
+      const sortedClosed = [...closed].sort((a, b) => new Date(a.trade_date) - new Date(b.trade_date));
+      let cumulative = 0;
+      const cumData = sortedClosed.map(t => { cumulative += t.pnl || 0; return cumulative; });
+      const cumLabels = sortedClosed.map(t => t.trade_date);
+
+      new Chart(document.getElementById('pnl-chart'), {
+        type: 'line',
+        data: {
+          labels: cumLabels,
+          datasets: [{
+            data: cumData,
+            borderColor: '#00e5a0',
+            backgroundColor: 'rgba(0,229,160,0.08)',
+            fill: true,
+            tension: 0.4,
+            pointRadius: 3,
+            pointBackgroundColor: '#00e5a0',
+          }]
+        },
+        options: {
+          responsive: true, maintainAspectRatio: false,
+          plugins: { legend: { display: false } },
+          scales: {
+            x: { display: false },
+            y: { grid: { color: '#1e2530' }, ticks: { color: '#5a6478', font: { family: 'DM Mono' }, callback: v => formatIDR(v) } }
+          }
+        }
+      });
+
+      // Win/Loss donut
+      new Chart(document.getElementById('wr-chart'), {
+        type: 'doughnut',
+        data: {
+          labels: ['Win', 'Loss', 'Open'],
+          datasets: [{
+            data: [wins.length, losses.length, trades.filter(t => t.status === 'open').length],
+            backgroundColor: ['rgba(0,229,160,0.8)', 'rgba(255,68,85,0.8)', 'rgba(255,170,0,0.5)'],
+            borderColor: '#111418',
+            borderWidth: 3,
+          }]
+        },
+        options: {
+          responsive: true, maintainAspectRatio: false,
+          plugins: {
+            legend: { position: 'bottom', labels: { color: '#5a6478', font: { family: 'DM Mono', size: 12 }, boxWidth: 12 } }
+          },
+          cutout: '65%'
+        }
+      });
+
+      // Recent trades table
+      const recent = trades.slice(0, 8);
+      const tbody = document.getElementById('recent-tbody');
+      tbody.innerHTML = recent.map(t => `
+        <tr>
+          <td class="text-muted">${t.trade_date}</td>
+          <td style="font-weight:500">${t.ticker}</td>
+          <td>${Number(t.entry_price).toLocaleString('id-ID')}</td>
+          <td>${t.exit_price ? Number(t.exit_price).toLocaleString('id-ID') : '<span class="text-muted">—</span>'}</td>
+          <td class="${t.pnl > 0 ? 'text-up' : t.pnl < 0 ? 'text-down' : ''}">${t.pnl ? formatIDR(t.pnl) : '—'}</td>
+          <td><span class="badge badge-${t.pnl > 0 ? 'win' : t.pnl < 0 ? 'loss' : 'open'}">${t.status === 'open' ? 'OPEN' : t.pnl > 0 ? 'WIN' : 'LOSS'}</span></td>
+        </tr>
+      `).join('');
+    })();
+
+    function formatIDR(n) {
+      if (!n && n !== 0) return '—';
+      return (n >= 0 ? '' : '-') + 'Rp ' + Math.abs(n).toLocaleString('id-ID');
+    }
+
+    function renderEmptyCharts() {
+      ['pnl-chart', 'wr-chart'].forEach(id => {
+        const c = document.getElementById(id);
+        c.getContext('2d').fillStyle = '#1e2530';
+      });
+    }
+  </script>
+</body>
+</html>

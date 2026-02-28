@@ -1,0 +1,460 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Trading Plan – TradeLog IDX</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Mono:wght@300;400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../css/shared.css"/>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <style>
+    .plan-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+    .rule-list { list-style: none; }
+    .rule-list li {
+      padding: 10px 0;
+      border-bottom: 1px solid var(--border);
+      font-size: 13px;
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+    }
+    .rule-list li:last-child { border-bottom: none; }
+    .rule-num {
+      font-family: var(--font-display);
+      font-weight: 700;
+      color: var(--accent);
+      font-size: 11px;
+      min-width: 20px;
+      padding-top: 1px;
+    }
+    .plan-section { margin-bottom: 24px; }
+    .editable-area {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 16px;
+      font-family: var(--font-mono);
+      font-size: 13px;
+      color: var(--text);
+      line-height: 1.7;
+      min-height: 100px;
+      outline: none;
+      width: 100%;
+      resize: vertical;
+    }
+    .editable-area:focus { border-color: var(--accent); }
+    .save-indicator {
+      font-size: 11px;
+      color: var(--muted);
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .save-indicator.saved { color: var(--accent); }
+    .tab-pills { display: flex; gap: 8px; margin-bottom: 24px; flex-wrap: wrap; }
+    .pill {
+      padding: 8px 18px;
+      border-radius: 100px;
+      font-size: 12px;
+      cursor: pointer;
+      border: 1px solid var(--border);
+      background: var(--surface);
+      color: var(--muted);
+      font-family: var(--font-mono);
+      transition: all 0.2s;
+    }
+    .pill.active {
+      background: rgba(0,229,160,0.1);
+      border-color: rgba(0,229,160,0.4);
+      color: var(--accent);
+    }
+    .plan-card { display: none; }
+    .plan-card.active { display: block; }
+    .checklist-item {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 10px 14px;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      margin-bottom: 8px;
+      font-size: 13px;
+      cursor: pointer;
+      transition: all 0.15s;
+      background: var(--bg);
+    }
+    .checklist-item:hover { border-color: var(--accent); }
+    .checklist-item input[type="checkbox"] {
+      width: 16px; height: 16px;
+      accent-color: var(--accent);
+      cursor: pointer;
+      flex-shrink: 0;
+    }
+    .checklist-item.checked { opacity: 0.5; text-decoration: line-through; color: var(--muted); }
+  </style>
+</head>
+<body>
+
+  <!-- SIDEBAR -->
+  <aside class="sidebar">
+    <div class="sidebar-logo">
+      <div class="mark">IDX · Trading</div>
+      <h2>TRADE<span>LOG</span></h2>
+    </div>
+    <nav class="nav-section">
+      <div class="nav-label">Main</div>
+      <a class="nav-item" href="dashboard.html"><span class="icon">◈</span> Dashboard</a>
+      <a class="nav-item" href="journal.html"><span class="icon">◎</span> Trade Journal</a>
+      <a class="nav-item active" href="plan.html"><span class="icon">◇</span> Trading Plan</a>
+      <a class="nav-item" href="watchlist.html"><span class="icon">◉</span> Watchlist</a>
+    </nav>
+    <nav class="nav-section">
+      <div class="nav-label">Account</div>
+      <a class="nav-item" href="admin.html" id="admin-link" style="display:none"><span class="icon">⬡</span> Admin Panel</a>
+      <button class="nav-item" onclick="signOut()"><span class="icon">→</span> Sign Out</button>
+    </nav>
+    <div class="sidebar-footer">
+      <div class="user-chip">
+        <div class="user-avatar" id="avatar">?</div>
+        <div class="user-info">
+          <div class="user-email" id="user-email">Loading...</div>
+        </div>
+      </div>
+    </div>
+  </aside>
+
+  <!-- MAIN -->
+  <main class="main">
+    <div class="flex-between mb-6">
+      <div class="page-header" style="margin-bottom:0">
+        <h1>Trading Plan</h1>
+        <p>Your strategy, rules, and trade checklist</p>
+      </div>
+      <div class="flex gap-2" style="align-items:center">
+        <div class="save-indicator" id="save-indicator">Auto-save on</div>
+        <button class="btn btn-primary" onclick="saveAll()">Save All</button>
+      </div>
+    </div>
+
+    <!-- TABS -->
+    <div class="tab-pills">
+      <button class="pill active" onclick="switchPlan('overview')">Overview</button>
+      <button class="pill" onclick="switchPlan('rules')">Trading Rules</button>
+      <button class="pill" onclick="switchPlan('setup')">Setups</button>
+      <button class="pill" onclick="switchPlan('risk')">Risk Management</button>
+      <button class="pill" onclick="switchPlan('checklist')">Pre-Trade Checklist</button>
+    </div>
+
+    <!-- OVERVIEW -->
+    <div class="plan-card active" id="plan-overview">
+      <div class="plan-grid">
+        <div class="card">
+          <div class="card-title">Trading Style & Goals</div>
+          <div class="form-group">
+            <label>Trading Style</label>
+            <select id="p-style" style="margin-bottom:14px">
+              <option value="">— Select —</option>
+              <option>Swing Trading (days to weeks)</option>
+              <option>Position Trading (weeks to months)</option>
+              <option>Day Trading (intraday)</option>
+              <option>Scalping</option>
+              <option>Mixed</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Target Monthly Return (%)</label>
+            <input type="number" id="p-return" placeholder="e.g. 5"/>
+          </div>
+          <div class="form-group">
+            <label>Trading Capital (IDR)</label>
+            <input type="number" id="p-capital" placeholder="e.g. 50000000"/>
+          </div>
+          <div class="form-group">
+            <label>Max Drawdown Tolerance (%)</label>
+            <input type="number" id="p-drawdown" placeholder="e.g. 15"/>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-title">My Trading Philosophy</div>
+          <div class="form-group">
+            <label>Write your trading philosophy</label>
+            <textarea class="editable-area" id="p-philosophy" style="min-height:200px" placeholder="e.g. I trade breakouts on IDX blue chips with strict risk management. I only take 2% risk per trade and focus on high probability setups..."></textarea>
+          </div>
+        </div>
+      </div>
+
+      <div class="card" style="margin-top:20px">
+        <div class="card-title">Markets & Instruments</div>
+        <div class="form-row" style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
+          <div class="form-group">
+            <label>Preferred Sectors</label>
+            <textarea id="p-sectors" placeholder="e.g. Banking, Energy, Consumer..." style="min-height:80px"></textarea>
+          </div>
+          <div class="form-group">
+            <label>Avoid / Blacklist</label>
+            <textarea id="p-avoid" placeholder="e.g. Stocks with low liquidity, pump & dump patterns..."></textarea>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- RULES -->
+    <div class="plan-card" id="plan-rules">
+      <div class="plan-grid">
+        <div class="card">
+          <div class="card-title">Entry Rules ✓</div>
+          <div class="form-group">
+            <label>My rules before entering a trade</label>
+            <textarea class="editable-area" id="p-entry-rules" style="min-height:280px"
+              placeholder="1. Price must be above 20 EMA
+2. RSI between 40-60 on entry
+3. Volume confirmation (2x avg)
+4. Clear support/resistance level
+5. Risk:Reward minimum 1:2
+6. ..."></textarea>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-title">Exit Rules ✓</div>
+          <div class="form-group">
+            <label>My rules for exiting a trade</label>
+            <textarea class="editable-area" id="p-exit-rules" style="min-height:280px"
+              placeholder="1. Always set stop loss before entry
+2. Take partial profit at 1R
+3. Trail stop after 2R
+4. Exit if thesis is invalidated
+5. Never let a winner turn into a loser
+6. ..."></textarea>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- SETUPS -->
+    <div class="plan-card" id="plan-setup">
+      <div class="card">
+        <div class="card-title">My Trading Setups</div>
+        <div class="form-group">
+          <label>Document each setup you trade</label>
+          <textarea class="editable-area" id="p-setups" style="min-height:400px"
+            placeholder="SETUP 1: Breakout from Base
+— Timeframe: Daily
+— Entry: On close above resistance with volume
+— Stop Loss: Below breakout level
+— Target: Next resistance or 1.5x base height
+— Win rate: ~55%
+
+SETUP 2: Support Bounce
+— Timeframe: Daily / H4
+— Entry: Bullish candlestick pattern on support
+— Stop Loss: Below support with buffer
+— Target: Next resistance
+— Win rate: ~50%
+
+Add your setups here..."></textarea>
+        </div>
+      </div>
+    </div>
+
+    <!-- RISK MANAGEMENT -->
+    <div class="plan-card" id="plan-risk">
+      <div class="plan-grid">
+        <div class="card">
+          <div class="card-title">Risk Per Trade</div>
+          <div class="form-group">
+            <label>Max Risk Per Trade (%)</label>
+            <input type="number" id="p-risk-pct" placeholder="e.g. 2" step="0.1"/>
+          </div>
+          <div class="form-group">
+            <label>Max Open Positions</label>
+            <input type="number" id="p-max-pos" placeholder="e.g. 5"/>
+          </div>
+          <div class="form-group">
+            <label>Max Daily Loss (IDR)</label>
+            <input type="number" id="p-max-daily" placeholder="e.g. 1000000"/>
+          </div>
+          <div class="form-group">
+            <label>Max Weekly Loss (IDR)</label>
+            <input type="number" id="p-max-weekly" placeholder="e.g. 3000000"/>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-title">Risk Rules & Notes</div>
+          <textarea class="editable-area" id="p-risk-notes" style="min-height:280px"
+            placeholder="1. Never risk more than 2% per trade
+2. Stop trading for the day after 3 losses
+3. Reduce position size after drawdown
+4. Never average down on a losing position
+5. ..."></textarea>
+        </div>
+      </div>
+    </div>
+
+    <!-- CHECKLIST -->
+    <div class="plan-card" id="plan-checklist">
+      <div class="card">
+        <div class="flex-between mb-4">
+          <div class="card-title" style="margin-bottom:0">Pre-Trade Checklist</div>
+          <div style="display:flex;gap:8px">
+            <button class="btn btn-ghost" onclick="resetChecklist()" style="font-size:12px;padding:6px 14px">Reset All</button>
+            <button class="btn btn-primary" onclick="addCheckItem()" style="font-size:12px;padding:6px 14px">+ Add Item</button>
+          </div>
+        </div>
+        <p class="text-muted text-sm" style="margin-bottom:16px">Run through this before every trade. Check each box when confirmed.</p>
+        <div id="checklist-container"></div>
+      </div>
+    </div>
+  </main>
+
+  <script src="../js/config.js"></script>
+  <script src="../js/auth.js"></script>
+  <script>
+    let userId = null;
+    let planData = {};
+    let saveTimer = null;
+
+    const DEFAULT_CHECKLIST = [
+      'Is this setup in my trading plan?',
+      'Have I identified my entry, stop loss, and target?',
+      'Is the Risk:Reward at least 1:2?',
+      'Have I calculated my position size?',
+      'Is market trend aligned with my trade direction?',
+      'Is volume confirming the setup?',
+      'Have I checked for upcoming news / earnings?',
+      'Am I trading from a calm, clear mindset?',
+      'Have I set my stop loss order?',
+    ];
+
+    let checklistItems = [];
+
+    (async () => {
+      const user = await initAuth();
+      if (!user) return;
+      userId = user.id;
+      document.getElementById('user-email').textContent = user.email;
+      document.getElementById('avatar').textContent = user.email[0].toUpperCase();
+
+      const { data: profile } = await sb.from('profiles').select('role').eq('id', user.id).single();
+      if (profile?.role === 'admin') document.getElementById('admin-link').style.display = 'flex';
+
+      await loadPlan();
+    })();
+
+    async function loadPlan() {
+      const { data } = await sb.from('trading_plans').select('*').eq('user_id', userId).single();
+      if (data) {
+        planData = data;
+        populateFields(data);
+        checklistItems = data.checklist ? JSON.parse(data.checklist) : DEFAULT_CHECKLIST.map(t => ({ text: t, checked: false }));
+      } else {
+        checklistItems = DEFAULT_CHECKLIST.map(t => ({ text: t, checked: false }));
+      }
+      renderChecklist();
+    }
+
+    function populateFields(d) {
+      const fields = ['p-style','p-return','p-capital','p-drawdown','p-philosophy','p-sectors','p-avoid','p-entry-rules','p-exit-rules','p-setups','p-risk-pct','p-max-pos','p-max-daily','p-max-weekly','p-risk-notes'];
+      const keys = ['style','monthly_return','capital','max_drawdown','philosophy','preferred_sectors','avoid_list','entry_rules','exit_rules','setups','risk_per_trade','max_positions','max_daily_loss','max_weekly_loss','risk_notes'];
+      fields.forEach((id, i) => {
+        const el = document.getElementById(id);
+        if (el && d[keys[i]] != null) el.value = d[keys[i]];
+      });
+    }
+
+    function autoSave() {
+      clearTimeout(saveTimer);
+      saveTimer = setTimeout(saveAll, 2000);
+      document.getElementById('save-indicator').textContent = 'Unsaved changes...';
+      document.getElementById('save-indicator').className = 'save-indicator';
+    }
+
+    async function saveAll() {
+      const payload = {
+        user_id: userId,
+        style: document.getElementById('p-style').value,
+        monthly_return: parseFloat(document.getElementById('p-return').value) || null,
+        capital: parseFloat(document.getElementById('p-capital').value) || null,
+        max_drawdown: parseFloat(document.getElementById('p-drawdown').value) || null,
+        philosophy: document.getElementById('p-philosophy').value,
+        preferred_sectors: document.getElementById('p-sectors').value,
+        avoid_list: document.getElementById('p-avoid').value,
+        entry_rules: document.getElementById('p-entry-rules').value,
+        exit_rules: document.getElementById('p-exit-rules').value,
+        setups: document.getElementById('p-setups').value,
+        risk_per_trade: parseFloat(document.getElementById('p-risk-pct').value) || null,
+        max_positions: parseInt(document.getElementById('p-max-pos').value) || null,
+        max_daily_loss: parseFloat(document.getElementById('p-max-daily').value) || null,
+        max_weekly_loss: parseFloat(document.getElementById('p-max-weekly').value) || null,
+        risk_notes: document.getElementById('p-risk-notes').value,
+        checklist: JSON.stringify(checklistItems),
+        updated_at: new Date().toISOString(),
+      };
+
+      const { error } = planData.id
+        ? await sb.from('trading_plans').update(payload).eq('id', planData.id)
+        : await sb.from('trading_plans').insert(payload);
+
+      if (error) {
+        document.getElementById('save-indicator').textContent = '✕ Error saving';
+      } else {
+        document.getElementById('save-indicator').textContent = '✓ All saved';
+        document.getElementById('save-indicator').className = 'save-indicator saved';
+        // Reload to get id
+        const { data } = await sb.from('trading_plans').select('id').eq('user_id', userId).single();
+        if (data) planData.id = data.id;
+      }
+    }
+
+    // Auto-save on input
+    document.addEventListener('input', e => {
+      if (e.target.closest('.plan-card')) autoSave();
+    });
+
+    function switchPlan(name) {
+      document.querySelectorAll('.plan-card').forEach(c => c.classList.remove('active'));
+      document.querySelectorAll('.pill').forEach(p => p.classList.remove('active'));
+      document.getElementById('plan-' + name).classList.add('active');
+      event.target.classList.add('active');
+    }
+
+    function renderChecklist() {
+      const container = document.getElementById('checklist-container');
+      container.innerHTML = checklistItems.map((item, i) => `
+        <div class="checklist-item ${item.checked ? 'checked' : ''}" id="ci-${i}">
+          <input type="checkbox" ${item.checked ? 'checked' : ''} onchange="toggleCheck(${i}, this.checked)"/>
+          <span style="flex:1">${item.text}</span>
+          <button onclick="removeCheckItem(${i})" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:14px;padding:0 4px;line-height:1">✕</button>
+        </div>
+      `).join('');
+    }
+
+    function toggleCheck(i, checked) {
+      checklistItems[i].checked = checked;
+      document.getElementById('ci-' + i).className = 'checklist-item ' + (checked ? 'checked' : '');
+      autoSave();
+    }
+
+    function resetChecklist() {
+      checklistItems.forEach(item => item.checked = false);
+      renderChecklist();
+      autoSave();
+    }
+
+    function addCheckItem() {
+      const text = prompt('Enter checklist item:');
+      if (!text) return;
+      checklistItems.push({ text, checked: false });
+      renderChecklist();
+      autoSave();
+    }
+
+    function removeCheckItem(i) {
+      checklistItems.splice(i, 1);
+      renderChecklist();
+      autoSave();
+    }
+  </script>
+</body>
+</html>

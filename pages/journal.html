@@ -1,0 +1,709 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Trade Journal – TradeLog IDX</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Mono:wght@300;400;500&display=swap"
+      rel="stylesheet"
+    />
+
+    <link
+      rel="stylesheet"
+      href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css"
+    />
+    <link
+      rel="stylesheet"
+      href="https://cdn.jsdelivr.net/npm/flatpickr/dist/themes/dark.css"
+    />
+
+    <link rel="stylesheet" href="../css/shared.css" />
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+    <style>
+      .filter-bar {
+        display: flex;
+        gap: 10px;
+        flex-wrap: wrap;
+        margin-bottom: 20px;
+      }
+      .filter-bar input,
+      .filter-bar select {
+        width: auto;
+        flex: 1;
+        min-width: 130px;
+      }
+      .form-row {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 14px;
+      }
+      .ticker-dropdown {
+        z-index: 9999 !important;
+      }
+      .text-up {
+        color: var(--accent);
+      }
+      .text-down {
+        color: #ff4d4d;
+      }
+      .btn-danger {
+        background: #ff4d4d !important;
+        color: white !important;
+      }
+      .btn-danger:hover {
+        background: #cc0000 !important;
+      }
+
+      /* Custom Flatpickr agar senada dengan UI */
+      .flatpickr-calendar {
+        z-index: 10000 !important;
+        background: #1a1a1a;
+        border: 1px solid var(--border);
+      }
+    </style>
+  </head>
+  <body>
+    <aside class="sidebar">
+      <div class="sidebar-logo">
+        <div class="mark">IDX · Trading</div>
+        <h2>TRADE<span>LOG</span></h2>
+      </div>
+      <nav class="nav-section">
+        <div class="nav-label">Main</div>
+        <a class="nav-item" href="dashboard.html"
+          ><span class="icon">◈</span> Dashboard</a
+        >
+        <a class="nav-item active" href="journal.html"
+          ><span class="icon">◎</span> Trade Journal</a
+        >
+        <a class="nav-item" href="plan.html"
+          ><span class="icon">◇</span> Trading Plan</a
+        >
+        <a class="nav-item" href="watchlist.html"
+          ><span class="icon">◉</span> Watchlist</a
+        >
+      </nav>
+      <nav class="nav-section">
+        <div class="nav-label">Account</div>
+        <a
+          class="nav-item"
+          href="admin.html"
+          id="admin-link"
+          style="display: none"
+          ><span class="icon">⬡</span> Admin Panel</a
+        >
+        <button class="nav-item" onclick="signOut()">
+          <span class="icon">→</span> Sign Out
+        </button>
+      </nav>
+      <div class="sidebar-footer">
+        <div class="user-chip">
+          <div class="user-avatar" id="avatar">?</div>
+          <div class="user-info">
+            <div class="user-email" id="user-email">Loading...</div>
+          </div>
+        </div>
+      </div>
+    </aside>
+
+    <main class="main">
+      <div class="flex-between mb-6">
+        <div class="page-header" style="margin-bottom: 0">
+          <h1>Trade Journal</h1>
+          <p>Log and review every trade</p>
+        </div>
+        <button class="btn btn-primary" onclick="openModal()">
+          + New Trade
+        </button>
+      </div>
+
+      <div class="filter-bar">
+        <input
+          type="text"
+          id="filter-ticker"
+          placeholder="Filter ticker..."
+          oninput="applyFilters()"
+        />
+        <select id="filter-status" onchange="applyFilters()">
+          <option value="">All Status</option>
+          <option value="open">Open</option>
+          <option value="closed">Closed</option>
+        </select>
+      </div>
+
+      <div class="card">
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Date</th>
+                <th>Ticker</th>
+                <th>Avg Entry</th>
+                <th>Total Lot</th>
+                <th>Exit</th>
+                <th>P&L (IDR)</th>
+                <th>R:R</th>
+                <th>Result</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody id="trades-tbody">
+              <tr>
+                <td colspan="9">
+                  <div class="empty-state">Loading trades...</div>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </main>
+
+    <div class="modal-overlay" id="modal">
+      <div class="modal">
+        <div class="modal-header">
+          <div class="modal-title" id="modal-title">New Trade</div>
+          <button class="modal-close" onclick="closeModal()">✕</button>
+        </div>
+        <input type="hidden" id="trade-id" />
+
+        <div class="form-row">
+          <div class="form-group">
+            <label>Date</label>
+            <input type="text" id="f-date" placeholder="Pilih tanggal..." />
+          </div>
+          <div class="form-group">
+            <label>Ticker</label>
+            <input
+              type="text"
+              id="f-ticker"
+              placeholder="Cari kode saham..."
+              autocomplete="off"
+            />
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label>Company Name</label>
+          <input
+            type="text"
+            id="f-company"
+            readonly
+            style="background: rgba(255, 255, 255, 0.05)"
+          />
+        </div>
+
+        <div class="form-group">
+          <label>Status</label>
+          <select
+            id="f-status"
+            onchange="
+              toggleExitFields();
+              calcPnl();
+            "
+          >
+            <option value="open">Open</option>
+            <option value="closed">Closed</option>
+          </select>
+        </div>
+
+        <div class="form-row">
+          <div class="form-group">
+            <label>Entry Price</label>
+            <input type="number" id="f-entry" oninput="calcPnl()" />
+          </div>
+          <div class="form-group">
+            <label>Stop Loss</label>
+            <input type="number" id="f-sl" oninput="calcPnl()" />
+          </div>
+        </div>
+
+        <div class="form-row">
+          <div class="form-group">
+            <label>Target Price</label>
+            <input type="number" id="f-tp" oninput="calcPnl()" />
+          </div>
+          <div class="form-group">
+            <label>Lot Size</label>
+            <input type="number" id="f-lot" oninput="calcPnl()" />
+          </div>
+        </div>
+
+        <div
+          id="exit-fields"
+          style="
+            display: none;
+            border-top: 1px solid var(--border);
+            padding-top: 15px;
+            margin-top: 15px;
+          "
+        >
+          <div class="form-row">
+            <div class="form-group">
+              <label>Exit Price</label>
+              <input type="number" id="f-exit" oninput="calcPnl()" />
+            </div>
+            <div class="form-group">
+              <label>P&L (IDR)</label>
+              <input
+                type="number"
+                id="f-pnl"
+                readonly
+                style="background: rgba(255, 255, 255, 0.05)"
+              />
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label>R:R Ratio</label>
+              <input
+                type="text"
+                id="f-rr"
+                readonly
+                style="background: rgba(255, 255, 255, 0.05)"
+              />
+            </div>
+            <div class="form-group">
+              <label>Exit Date</label>
+              <input
+                type="text"
+                id="f-exitdate"
+                placeholder="Pilih tanggal keluar..."
+              />
+            </div>
+          </div>
+        </div>
+
+        <div class="form-group" style="margin-top: 15px">
+          <label>Setup / Strategy</label>
+          <input type="text" id="f-setup" />
+        </div>
+
+        <div class="form-group">
+          <label>Sector</label>
+          <input
+            type="text"
+            id="f-sector"
+            readonly
+            style="background: rgba(255, 255, 255, 0.05)"
+          />
+        </div>
+
+        <div
+          style="
+            display: flex;
+            gap: 10px;
+            justify-content: flex-end;
+            margin-top: 20px;
+          "
+        >
+          <button class="btn btn-ghost" onclick="closeModal()">Cancel</button>
+          <button class="btn btn-primary" onclick="saveTrade()">
+            Save Trade
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <div class="modal-overlay" id="entry-modal">
+      <div class="modal" style="max-width: 420px">
+        <div class="modal-header">
+          <div class="modal-title">Add Entry</div>
+          <button class="modal-close" onclick="closeEntryModal()">✕</button>
+        </div>
+        <input type="hidden" id="entry-trade-id" />
+        <div
+          id="entry-summary"
+          style="
+            background: var(--bg);
+            border: 1px solid var(--border);
+            padding: 14px;
+            border-radius: 10px;
+            margin-bottom: 15px;
+          "
+        >
+          <div
+            id="entry-ticker-label"
+            style="font-weight: 700; margin-bottom: 5px"
+          >
+            TICKER
+          </div>
+          <div style="font-size: 12px; color: var(--muted)">
+            Avg: <span id="entry-cur-avg">0</span> | Total:
+            <span id="entry-cur-lot">0</span> lot
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>Date</label>
+            <input
+              type="text"
+              id="ne-date"
+              placeholder="Pilih tanggal beli..."
+            />
+          </div>
+          <div class="form-group">
+            <label>Price</label>
+            <input type="number" id="ne-price" oninput="previewAvg()" />
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>Lot</label>
+            <input type="number" id="ne-lot" oninput="previewAvg()" />
+          </div>
+          <div class="form-group">
+            <label>New Avg</label>
+            <input
+              type="text"
+              id="ne-preview-avg"
+              readonly
+              style="
+                font-weight: 700;
+                color: var(--accent);
+                background: rgba(0, 229, 160, 0.05);
+              "
+            />
+          </div>
+        </div>
+        <button
+          class="btn btn-primary"
+          style="width: 100%; margin-top: 10px"
+          onclick="saveEntry()"
+        >
+          Add Entry
+        </button>
+      </div>
+    </div>
+
+    <script src="../js/config.js"></script>
+    <script src="../js/auth.js"></script>
+    <!-- <script src="../js/idx-tickers.js"></script> -->
+    <script src="../js/ticker-select.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+
+    <script>
+      let allTrades = [];
+      let userId = null;
+      let tickerSelect = null;
+      let fpDate, fpExitDate, fpEntryDate; // Variable untuk flatpickr instances
+
+      (async () => {
+        const user = await initAuth();
+        if (!user) return;
+        userId = user.id;
+        document.getElementById("user-email").textContent = user.email;
+        document.getElementById("avatar").textContent =
+          user.email[0].toUpperCase();
+
+        // Inisialisasi Flatpickr
+        const fpConfig = { dateFormat: "Y-m-d", theme: "dark" };
+        fpDate = flatpickr("#f-date", fpConfig);
+        fpExitDate = flatpickr("#f-exitdate", fpConfig);
+        fpEntryDate = flatpickr("#ne-date", fpConfig);
+
+        // ... kode lainnya ...
+        await loadTrades();
+
+        // LOGIKA AUTO-OPEN MODAL DARI WATCHLIST
+        const urlParams = new URLSearchParams(window.location.search);
+        if (urlParams.has("ticker")) {
+          // Tunggu sebentar agar inisialisasi auth & data selesai
+          setTimeout(() => {
+            openModal(); // Buka modal baru
+
+            // Isi field dengan data dari URL
+            document.getElementById("f-ticker").value = urlParams.get("ticker");
+            document.getElementById("f-company").value = urlParams.get("name");
+            document.getElementById("f-sector").value = urlParams.get("sector");
+            document.getElementById("f-entry").value = urlParams.get("entry");
+            document.getElementById("f-sl").value = urlParams.get("sl");
+
+            // Jalankan kalkulasi R:R jika data tersedia
+            if (typeof calcPnl === "function") calcPnl();
+
+            // Opsional: Hapus parameter dari URL agar tidak terbuka lagi saat refresh
+            window.history.replaceState(
+              {},
+              document.title,
+              window.location.pathname,
+            );
+          }, 300);
+        }
+      })();
+
+      async function loadTrades() {
+        const { data, error } = await sb
+          .from("trades")
+          .select("*")
+          .eq("user_id", userId)
+          .order("trade_date", { ascending: false });
+        if (error) return;
+        allTrades = data || [];
+        renderTrades(allTrades);
+      }
+
+      function renderTrades(trades) {
+        const tbody = document.getElementById("trades-tbody");
+        if (!trades.length) {
+          tbody.innerHTML =
+            '<tr><td colspan="9"><div class="empty-state">No trades found.</div></td></tr>';
+          return;
+        }
+        tbody.innerHTML = trades
+          .map((t) => {
+            const statusClass =
+              t.status === "open" ? "open" : t.pnl > 0 ? "win" : "loss";
+            const nEntries = Array.isArray(t.entries) ? t.entries.length : 1;
+            return `
+          <tr>
+            <td class="text-muted text-sm">${t.trade_date}</td>
+            <td><strong>${t.ticker}</strong></td>
+            <td>${fmt(t.avg_entry_price || t.entry_price)} ${nEntries > 1 ? `<span style="font-size:10px;color:var(--accent)">(${nEntries}x)</span>` : ""}</td>
+            <td class="text-muted">${t.total_lot || t.lot_size || 0}</td>
+            <td>${t.exit_price ? fmt(t.exit_price) : "—"}</td>
+            <td class="${t.pnl > 0 ? "text-up" : t.pnl < 0 ? "text-down" : ""}">${t.pnl != null ? fmtIDR(t.pnl) : "—"}</td>
+            <td class="text-muted">${t.rr ? t.rr + "R" : "—"}</td>
+            <td><span class="badge badge-${statusClass}">${t.status.toUpperCase()}</span></td>
+            <td>
+              <div style="display:flex; gap:6px">
+                ${t.status === "open" ? `<button class="btn btn-ghost" style="padding:4px 8px; font-size:11px; color:var(--accent); border-color:rgba(0,229,160,0.3)" onclick="openEntryModal('${t.id}')">+ Entry</button>` : ""}
+                <button class="btn btn-ghost" style="padding:4px 8px; font-size:11px" onclick="editTrade('${t.id}')">Edit</button>
+                <button class="btn btn-danger" style="padding:4px 8px; font-size:11px" onclick="deleteTrade('${t.id}')">Del</button>
+              </div>
+            </td>
+          </tr>`;
+          })
+          .join("");
+      }
+
+      function calcPnl() {
+        const entry = parseFloat(document.getElementById("f-entry").value) || 0;
+        const exit = parseFloat(document.getElementById("f-exit").value) || 0;
+        const sl = parseFloat(document.getElementById("f-sl").value) || 0;
+        const lot = parseFloat(document.getElementById("f-lot").value) || 0;
+        const status = document.getElementById("f-status").value;
+
+        if (status === "closed" && entry > 0 && exit > 0) {
+          const pnl = (exit - entry) * lot * 100;
+          document.getElementById("f-pnl").value = Math.round(pnl);
+          if (sl > 0 && sl !== entry) {
+            const risk = Math.abs(entry - sl);
+            const reward = Math.abs(exit - entry);
+            document.getElementById("f-rr").value = (reward / risk).toFixed(2);
+          }
+        } else {
+          document.getElementById("f-pnl").value = "";
+          document.getElementById("f-rr").value = "";
+        }
+      }
+
+      function openModal() {
+        document.getElementById("trade-id").value = "";
+        document.getElementById("modal-title").textContent = "New Trade";
+
+        const today = new Date().toISOString().slice(0, 10);
+        fpDate.setDate(today);
+        fpExitDate.clear();
+
+        [
+          "f-ticker",
+          "f-company",
+          "f-sector",
+          "f-entry",
+          "f-sl",
+          "f-tp",
+          "f-lot",
+          "f-exit",
+          "f-pnl",
+          "f-rr",
+          "f-setup",
+        ].forEach((id) => {
+          const el = document.getElementById(id);
+          if (el) el.value = "";
+        });
+        document.getElementById("f-status").value = "open";
+        toggleExitFields();
+        document.getElementById("modal").classList.add("open");
+
+        setTimeout(() => {
+          if (tickerSelect) tickerSelect.clear();
+          tickerSelect = new TickerSelect({
+            inputId: "f-ticker",
+            nameFieldId: "f-company",
+            sectorFieldId: "f-sector",
+          });
+        }, 100);
+      }
+
+      function editTrade(id) {
+        const t = allTrades.find((x) => x.id === id);
+        if (!t) return;
+        openModal();
+        document.getElementById("trade-id").value = t.id;
+        document.getElementById("modal-title").textContent = "Edit Trade";
+        fpDate.setDate(t.trade_date);
+        document.getElementById("f-status").value = t.status;
+        document.getElementById("f-entry").value =
+          t.avg_entry_price || t.entry_price;
+        document.getElementById("f-sl").value = t.stop_loss;
+        document.getElementById("f-tp").value = t.target_price;
+        document.getElementById("f-lot").value = t.total_lot || t.lot_size;
+        document.getElementById("f-exit").value = t.exit_price || "";
+        document.getElementById("f-setup").value = t.setup || "";
+
+        if (t.exit_date) fpExitDate.setDate(t.exit_date);
+
+        toggleExitFields();
+        setTimeout(() => {
+          tickerSelect.setValue(t.ticker);
+          calcPnl();
+        }, 150);
+      }
+
+      function closeModal() {
+        document.getElementById("modal").classList.remove("open");
+      }
+      function toggleExitFields() {
+        const isClosed = document.getElementById("f-status").value === "closed";
+        document.getElementById("exit-fields").style.display = isClosed
+          ? "block"
+          : "none";
+      }
+
+      async function saveTrade() {
+        const id = document.getElementById("trade-id").value;
+        const date = document.getElementById("f-date").value;
+        const entry = parseFloat(document.getElementById("f-entry").value);
+        const lot = parseInt(document.getElementById("f-lot").value) || 0;
+
+        const payload = {
+          user_id: userId,
+          trade_date: date,
+          ticker: document.getElementById("f-ticker").value.toUpperCase(),
+          company_name: document.getElementById("f-company").value,
+          status: document.getElementById("f-status").value,
+          entry_price: entry,
+          avg_entry_price: entry,
+          lot_size: lot,
+          total_lot: lot,
+          stop_loss: parseFloat(document.getElementById("f-sl").value) || null,
+          target_price:
+            parseFloat(document.getElementById("f-tp").value) || null,
+          exit_price:
+            parseFloat(document.getElementById("f-exit").value) || null,
+          exit_date: document.getElementById("f-exitdate").value || null,
+          pnl: parseFloat(document.getElementById("f-pnl").value) || null,
+          rr: parseFloat(document.getElementById("f-rr").value) || null,
+          setup: document.getElementById("f-setup").value,
+          sector: document.getElementById("f-sector").value,
+        };
+
+        if (!id) payload.entries = [{ date, price: entry, lot }];
+
+        let res = id
+          ? await sb.from("trades").update(payload).eq("id", id)
+          : await sb.from("trades").insert(payload);
+        if (res.error) alert(res.error.message);
+        else {
+          closeModal();
+          loadTrades();
+        }
+      }
+
+      function openEntryModal(id) {
+        const t = allTrades.find((x) => x.id === id);
+        document.getElementById("entry-trade-id").value = id;
+        document.getElementById("entry-ticker-label").textContent = t.ticker;
+        document.getElementById("entry-cur-avg").textContent = fmt(
+          t.avg_entry_price || t.entry_price,
+        );
+        document.getElementById("entry-cur-lot").textContent =
+          t.total_lot || t.lot_size;
+        fpEntryDate.setDate(new Date());
+        document.getElementById("ne-price").value = "";
+        document.getElementById("ne-lot").value = "";
+        document.getElementById("ne-preview-avg").value = "";
+        document.getElementById("entry-modal").classList.add("open");
+      }
+
+      function closeEntryModal() {
+        document.getElementById("entry-modal").classList.remove("open");
+      }
+
+      function previewAvg() {
+        const t = allTrades.find(
+          (x) => x.id === document.getElementById("entry-trade-id").value,
+        );
+        const nPrice =
+          parseFloat(document.getElementById("ne-price").value) || 0;
+        const nLot = parseInt(document.getElementById("ne-lot").value) || 0;
+        if (!nPrice || !nLot) return;
+        const cAvg = t.avg_entry_price || t.entry_price;
+        const cLot = t.total_lot || t.lot_size;
+        const nAvg = (cAvg * cLot + nPrice * nLot) / (cLot + nLot);
+        document.getElementById("ne-preview-avg").value =
+          Math.round(nAvg).toLocaleString("id-ID");
+      }
+
+      async function saveEntry() {
+        const id = document.getElementById("entry-trade-id").value;
+        const t = allTrades.find((x) => x.id === id);
+        const nPrice = parseFloat(document.getElementById("ne-price").value);
+        const nLot = parseInt(document.getElementById("ne-lot").value);
+        const nDate = document.getElementById("ne-date").value;
+
+        const cAvg = t.avg_entry_price || t.entry_price;
+        const cLot = t.total_lot || t.lot_size;
+        const nAvg = Math.round((cAvg * cLot + nPrice * nLot) / (cLot + nLot));
+
+        const entries = Array.isArray(t.entries) ? t.entries : [];
+        entries.push({ date: nDate, price: nPrice, lot: nLot });
+
+        const { error } = await sb
+          .from("trades")
+          .update({
+            avg_entry_price: nAvg,
+            total_lot: cLot + nLot,
+            entries: entries,
+          })
+          .eq("id", id);
+
+        if (error) alert(error.message);
+        else {
+          closeEntryModal();
+          loadTrades();
+        }
+      }
+
+      async function deleteTrade(id) {
+        if (!confirm("Hapus data trading ini?")) return;
+        const { error } = await sb.from("trades").delete().eq("id", id);
+        if (error) alert(error.message);
+        else await loadTrades();
+      }
+
+      function fmt(n) {
+        return n ? Number(n).toLocaleString("id-ID") : "—";
+      }
+      function fmtIDR(n) {
+        return (n < 0 ? "-" : "") + "Rp" + Math.abs(n).toLocaleString("id-ID");
+      }
+      function applyFilters() {
+        const ticker = document
+          .getElementById("filter-ticker")
+          .value.toUpperCase();
+        const status = document.getElementById("filter-status").value;
+        const filtered = allTrades.filter((t) => {
+          if (ticker && !t.ticker.includes(ticker)) return false;
+          if (status && t.status !== status) return false;
+          return true;
+        });
+        renderTrades(filtered);
+      }
+    </script>
+  </body>
+</html>
