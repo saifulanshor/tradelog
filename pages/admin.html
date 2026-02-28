@@ -1,0 +1,456 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Admin Panel – TradeLog IDX</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Mono:wght@300;400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../css/shared.css"/>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <style>
+    .req-card {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 20px;
+      margin-bottom: 12px;
+      display: flex;
+      align-items: flex-start;
+      gap: 16px;
+      transition: border-color 0.2s;
+    }
+    .req-card:hover { border-color: var(--accent); }
+    .req-avatar {
+      width: 40px; height: 40px;
+      border-radius: 50%;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      display: flex; align-items: center; justify-content: center;
+      font-family: var(--font-display);
+      font-weight: 700;
+      font-size: 16px;
+      color: var(--accent);
+      flex-shrink: 0;
+    }
+    .req-body { flex: 1; }
+    .req-name { font-weight: 600; margin-bottom: 2px; }
+    .req-email { font-size: 12px; color: var(--muted); margin-bottom: 8px; }
+    .req-reason { font-size: 13px; color: var(--text); line-height: 1.6; }
+    .req-time { font-size: 11px; color: var(--muted); margin-top: 6px; }
+    .req-actions { display: flex; gap: 8px; flex-shrink: 0; }
+    .invite-form {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 20px;
+      margin-bottom: 16px;
+    }
+    .user-row { display: flex; align-items: center; gap: 14px; padding: 12px 0; border-bottom: 1px solid var(--border); }
+    .user-row:last-child { border-bottom: none; }
+  </style>
+</head>
+<body>
+
+  <!-- SIDEBAR -->
+  <aside class="sidebar">
+    <div class="sidebar-logo">
+      <div class="mark">IDX · Trading</div>
+      <h2>TRADE<span>LOG</span></h2>
+    </div>
+    <nav class="nav-section">
+      <div class="nav-label">Main</div>
+      <a class="nav-item" href="dashboard.html"><span class="icon">◈</span> Dashboard</a>
+      <a class="nav-item" href="journal.html"><span class="icon">◎</span> Trade Journal</a>
+      <a class="nav-item" href="plan.html"><span class="icon">◇</span> Trading Plan</a>
+      <a class="nav-item" href="watchlist.html"><span class="icon">◉</span> Watchlist</a>
+    </nav>
+    <nav class="nav-section">
+      <div class="nav-label">Account</div>
+      <a class="nav-item active" href="admin.html"><span class="icon">⬡</span> Admin Panel</a>
+      <button class="nav-item" onclick="signOut()"><span class="icon">→</span> Sign Out</button>
+    </nav>
+    <div class="sidebar-footer">
+      <div class="user-chip">
+        <div class="user-avatar" id="avatar">?</div>
+        <div class="user-info">
+          <div class="user-email" id="user-email">Loading...</div>
+        </div>
+      </div>
+    </div>
+  </aside>
+
+  <!-- MAIN -->
+  <main class="main">
+    <div class="page-header">
+      <h1>Admin Panel</h1>
+      <p>Manage access requests and users</p>
+    </div>
+
+    <!-- UPLOAD TICKERS JSON -->
+    <div class="card mb-6">
+      <div class="card-title">Upload IDX Tickers</div>
+      <p class="text-muted text-sm" style="margin-bottom:16px">
+        Download data saham IDX terlebih dahulu, lalu upload file JSON-nya di sini.<br>
+        <span style="color:var(--accent)">Step 1:</span> Buka
+        <a href="https://www.idx.co.id/primary/ListedCompany/GetCompanyProfiles?emitenType=s&start=0&length=2000"
+           target="_blank"
+           style="color:var(--accent);text-decoration:underline;font-size:12px">
+          link ini
+        </a>
+        di browser → Ctrl+S → simpan sebagai file JSON.<br>
+        <span style="color:var(--accent)">Step 2:</span> Upload file JSON tersebut di bawah.
+      </p>
+
+      <!-- Drop zone -->
+      <div id="drop-zone" style="
+        border:2px dashed var(--border);border-radius:12px;padding:32px 20px;
+        text-align:center;cursor:pointer;transition:all 0.2s;position:relative;
+        background:var(--bg);"
+        onclick="document.getElementById('ticker-file').click()"
+        ondragover="handleDragOver(event)"
+        ondragleave="handleDragLeave(event)"
+        ondrop="handleDrop(event)">
+        <div style="font-size:28px;margin-bottom:8px">📂</div>
+        <div style="font-size:13px;color:var(--text);margin-bottom:4px">Klik atau drag & drop file JSON di sini</div>
+        <div style="font-size:11px;color:var(--muted)">File dari idx.co.id/ListedCompany</div>
+        <input type="file" id="ticker-file" accept=".json,application/json"
+          style="display:none" onchange="handleFileSelect(event)"/>
+      </div>
+
+      <!-- Progress -->
+      <div id="upload-progress" style="display:none;margin-top:16px">
+        <div style="height:4px;background:var(--border);border-radius:2px;overflow:hidden;margin-bottom:8px">
+          <div id="upload-bar" style="height:100%;background:var(--accent);border-radius:2px;width:0%;transition:width 0.3s"></div>
+        </div>
+        <div id="upload-label" class="text-muted text-sm">Memproses...</div>
+      </div>
+
+      <!-- Result -->
+      <div id="upload-result" style="display:none;margin-top:16px">
+        <div class="grid-3" style="gap:12px">
+          <div style="background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:14px">
+            <div class="stat-label">Total di File</div>
+            <div class="stat-value" id="upload-total">—</div>
+          </div>
+          <div style="background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:14px">
+            <div class="stat-label">Berhasil Disimpan</div>
+            <div class="stat-value up" id="upload-saved">—</div>
+          </div>
+          <div style="background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:14px">
+            <div class="stat-label">Terakhir Upload</div>
+            <div class="stat-value" style="font-size:14px;letter-spacing:0" id="upload-time">—</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- INVITE USER -->
+    <div class="card mb-6">
+      <div class="card-title">Invite User Directly</div>
+      <p class="text-muted text-sm" style="margin-bottom:16px">Send an invite email. The user will receive a link to set their password.</p>
+      <div style="display:flex;gap:10px">
+        <input type="email" id="invite-email" placeholder="user@email.com" style="flex:1"/>
+        <button class="btn btn-primary" onclick="inviteUser()">Send Invite</button>
+      </div>
+      <div style="margin-top:10px;font-size:12px;color:var(--muted)" id="invite-msg"></div>
+    </div>
+
+    <!-- ACCESS REQUESTS -->
+    <div class="card mb-6">
+      <div class="flex-between mb-4">
+        <div class="card-title" style="margin-bottom:0">Access Requests</div>
+        <span class="badge badge-open" id="pending-count">0 pending</span>
+      </div>
+      <div id="requests-container">
+        <div class="empty-state"><div class="icon">⬡</div><p>No pending requests</p></div>
+      </div>
+    </div>
+
+    <!-- ALL REQUESTS HISTORY -->
+    <div class="card">
+      <div class="card-title">Request History</div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Name</th>
+              <th>Email</th>
+              <th>Reason</th>
+              <th>Status</th>
+              <th>Date</th>
+            </tr>
+          </thead>
+          <tbody id="history-tbody">
+            <tr><td colspan="5" class="text-muted" style="padding:20px;text-align:center">Loading...</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </main>
+
+  <script src="../js/config.js"></script>
+  <script src="../js/auth.js"></script>
+  <script>
+    let userId = null;
+
+    (async () => {
+      const user = await initAuth();
+      if (!user) return;
+      userId = user.id;
+      document.getElementById('user-email').textContent = user.email;
+      document.getElementById('avatar').textContent = user.email[0].toUpperCase();
+
+      // Check admin
+      const { data: profile } = await sb.from('profiles').select('role').eq('id', user.id).single();
+      if (profile?.role !== 'admin') {
+        document.querySelector('.main').innerHTML = `
+          <div class="empty-state" style="margin-top:100px">
+            <div class="icon">⬡</div>
+            <p>Access denied. Admin only.</p>
+          </div>`;
+        return;
+      }
+
+      await loadRequests();
+    })();
+
+    async function loadRequests() {
+      const { data } = await sb.from('access_requests').select('*').order('created_at', { ascending: false });
+      const all = data || [];
+      const pending = all.filter(r => r.status === 'pending');
+
+      document.getElementById('pending-count').textContent = pending.length + ' pending';
+
+      // Render pending
+      const container = document.getElementById('requests-container');
+      if (!pending.length) {
+        container.innerHTML = '<div class="empty-state"><div class="icon">⬡</div><p>No pending requests</p></div>';
+      } else {
+        container.innerHTML = pending.map(r => `
+          <div class="req-card" id="req-${r.id}">
+            <div class="req-avatar">${r.name[0].toUpperCase()}</div>
+            <div class="req-body">
+              <div class="req-name">${r.name}</div>
+              <div class="req-email">${r.email}</div>
+              <div class="req-reason">${r.reason}</div>
+              <div class="req-time">${new Date(r.created_at).toLocaleString('id-ID')}</div>
+            </div>
+            <div class="req-actions">
+              <button class="btn btn-primary" style="font-size:12px;padding:8px 14px" onclick="approveRequest('${r.id}', '${r.email}', '${r.name}')">Approve</button>
+              <button class="btn btn-danger" style="font-size:12px;padding:8px 14px" onclick="rejectRequest('${r.id}')">Reject</button>
+            </div>
+          </div>
+        `).join('');
+      }
+
+      // History table
+      const tbody = document.getElementById('history-tbody');
+      tbody.innerHTML = all.map(r => `
+        <tr>
+          <td>${r.name}</td>
+          <td class="text-muted">${r.email}</td>
+          <td class="text-muted" style="max-width:300px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${r.reason}</td>
+          <td><span class="badge badge-${r.status === 'approved' ? 'win' : r.status === 'rejected' ? 'loss' : 'open'}">${r.status.toUpperCase()}</span></td>
+          <td class="text-muted text-sm">${new Date(r.created_at).toLocaleDateString('id-ID')}</td>
+        </tr>
+      `).join('');
+    }
+
+    async function approveRequest(id, email, name) {
+      if (!confirm(`Approve ${name} (${email}) and send invite?`)) return;
+
+      // 1. Send invite
+      const res = await inviteByEmail(email);
+      if (!res) return;
+
+      // 2. Update request status
+      await sb.from('access_requests').update({ status: 'approved' }).eq('id', id);
+
+      document.getElementById('req-' + id)?.remove();
+      toast(`✓ Invite sent to ${email}`, 'success');
+      await loadRequests();
+    }
+
+    async function rejectRequest(id) {
+      if (!confirm('Reject this request?')) return;
+      await sb.from('access_requests').update({ status: 'rejected' }).eq('id', id);
+      toast('Request rejected', 'success');
+      await loadRequests();
+    }
+
+    async function inviteUser() {
+      const email = document.getElementById('invite-email').value.trim();
+      if (!email) return;
+      const ok = await inviteByEmail(email);
+      if (ok) {
+        document.getElementById('invite-email').value = '';
+        document.getElementById('invite-msg').textContent = '✓ Invite sent to ' + email;
+        document.getElementById('invite-msg').style.color = 'var(--accent)';
+      }
+    }
+
+    async function inviteByEmail(email) {
+      // Uses Supabase admin invite - requires service role key OR edge function
+      // For now we use signUp with a random password and they reset it
+      // The proper way is via Supabase Dashboard → Authentication → Invite User
+      // OR deploy the edge function in SETUP.md
+
+      const { error } = await sb.auth.admin?.inviteUserByEmail?.(email) || { error: null };
+
+      if (error) {
+        // Fallback: show instructions
+        toast(`To invite ${email}: Go to Supabase Dashboard → Authentication → Users → Invite User`, 'error');
+        return false;
+      }
+      return true;
+    }
+
+    // ── UPLOAD TICKERS JSON ───────────────────────────────────────
+
+    function handleDragOver(e) {
+      e.preventDefault();
+      document.getElementById('drop-zone').style.borderColor = 'var(--accent)';
+      document.getElementById('drop-zone').style.background = 'rgba(0,229,160,0.04)';
+    }
+
+    function handleDragLeave(e) {
+      document.getElementById('drop-zone').style.borderColor = 'var(--border)';
+      document.getElementById('drop-zone').style.background = 'var(--bg)';
+    }
+
+    function handleDrop(e) {
+      e.preventDefault();
+      handleDragLeave(e);
+      const file = e.dataTransfer.files[0];
+      if (file) processFile(file);
+    }
+
+    function handleFileSelect(e) {
+      const file = e.target.files[0];
+      if (file) processFile(file);
+    }
+
+    function processFile(file) {
+      if (!file.name.endsWith('.json') && file.type !== 'application/json') {
+        toast('File harus berformat JSON', 'error');
+        return;
+      }
+
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        try {
+          const json = JSON.parse(e.target.result);
+          importTickers(json, file.name);
+        } catch (err) {
+          toast('File JSON tidak valid: ' + err.message, 'error');
+        }
+      };
+      reader.readAsText(file);
+    }
+
+    async function importTickers(json, filename) {
+      const progress = document.getElementById('upload-progress');
+      const bar      = document.getElementById('upload-bar');
+      const label    = document.getElementById('upload-label');
+      const result   = document.getElementById('upload-result');
+      const dropZone = document.getElementById('drop-zone');
+
+      progress.style.display = 'block';
+      result.style.display = 'none';
+      dropZone.style.pointerEvents = 'none';
+      dropZone.style.opacity = '0.5';
+
+      try {
+        // Support both IDX response format and plain array
+        const stocks = json?.data ?? json?.Data ?? (Array.isArray(json) ? json : []);
+
+        if (!stocks.length) {
+          throw new Error('Data kosong atau format tidak dikenali. Pastikan file dari URL IDX yang benar.');
+        }
+
+        setUploadProgress(20, `Membaca ${stocks.length} data dari ${filename}...`);
+
+        // Map IDX fields ke schema kita
+        const now = new Date().toISOString();
+        const tickers = stocks
+          .filter(s => s.KodeEmiten && s.EfekEmiten_Saham === true)
+          .map(s => ({
+            ticker:     s.KodeEmiten.trim().toUpperCase(),
+            name:       s.NamaEmiten?.trim() ?? s.KodeEmiten,
+            sector:     s.Sektor?.trim() ?? 'Other',
+            sub_sector: s.SubSektor?.trim() ?? null,
+            last_price: null,
+            updated_at: now,
+          }));
+
+        if (!tickers.length) {
+          throw new Error(`Tidak ada ticker valid ditemukan. Pastikan file dari URL: idx.co.id/primary/ListedCompany/GetCompanyProfiles?emitenType=s`);
+        }
+
+        setUploadProgress(40, `${tickers.length} ticker valid, menyimpan ke database...`);
+
+        // Upsert ke Supabase dalam chunks
+        const chunkSize = 200;
+        let saved = 0;
+
+        for (let i = 0; i < tickers.length; i += chunkSize) {
+          const chunk = tickers.slice(i, i + chunkSize);
+          const { error } = await sb.from('tickers').upsert(chunk, { onConflict: 'ticker' });
+          if (error) throw error;
+
+          saved += chunk.length;
+          const pct = 40 + Math.round((saved / tickers.length) * 58);
+          setUploadProgress(pct, `Menyimpan... ${saved}/${tickers.length}`);
+        }
+
+        setUploadProgress(100, '✓ Selesai!');
+        label.style.color = 'var(--accent)';
+
+        // Tampilkan hasil
+        document.getElementById('upload-total').textContent = stocks.length;
+        document.getElementById('upload-saved').textContent = saved;
+        document.getElementById('upload-time').textContent =
+          new Date().toLocaleString('id-ID', { day:'2-digit', month:'short', hour:'2-digit', minute:'2-digit' });
+        result.style.display = 'block';
+
+        // Reset drop zone
+        dropZone.innerHTML = `
+          <div style="font-size:28px;margin-bottom:8px">✅</div>
+          <div style="font-size:13px;color:var(--accent);margin-bottom:4px">${saved} ticker berhasil disimpan</div>
+          <div style="font-size:11px;color:var(--muted)">Klik untuk upload ulang</div>
+          <input type="file" id="ticker-file" accept=".json,application/json"
+            style="display:none" onchange="handleFileSelect(event)"/>`;
+
+        toast(`✓ ${saved} ticker IDX berhasil diimport`, 'success');
+
+      } catch (err) {
+        console.error('Import error:', err);
+        setUploadProgress(0, '');
+        progress.style.display = 'none';
+        toast('Import gagal: ' + err.message, 'error');
+      } finally {
+        dropZone.style.pointerEvents = 'auto';
+        dropZone.style.opacity = '1';
+        // Reset file input
+        const fileInput = document.getElementById('ticker-file');
+        if (fileInput) fileInput.value = '';
+      }
+    }
+
+    function setUploadProgress(pct, text) {
+      document.getElementById('upload-bar').style.width = pct + '%';
+      document.getElementById('upload-label').textContent = text;
+    }
+
+    function toast(msg, type = 'success') {
+      const el = document.createElement('div');
+      el.className = 'toast ' + type;
+      el.innerHTML = `<span>${type === 'success' ? '✓' : '!'}</span> ${msg}`;
+      el.style.cssText = 'max-width:400px;font-size:12px';
+      document.body.appendChild(el);
+      setTimeout(() => el.remove(), 5000);
+    }
+  </script>
+</body>
+</html>

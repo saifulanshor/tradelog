@@ -1,0 +1,478 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Watchlist – TradeLog IDX</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Mono:wght@300;400;500&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="../css/shared.css" />
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <style>
+      .watchlist-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+        gap: 14px;
+      }
+      .stock-card {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: 14px;
+        padding: 20px;
+        position: relative;
+        transition: border-color 0.2s;
+      }
+      .stock-card:hover {
+        border-color: var(--accent);
+      }
+      .stock-card.priority-high {
+        border-left: 3px solid var(--accent);
+      }
+      .stock-card.priority-medium {
+        border-left: 3px solid var(--warn);
+      }
+      .stock-card.priority-low {
+        border-left: 3px solid var(--muted);
+      }
+      .stock-ticker {
+        font-family: var(--font-display);
+        font-size: 22px;
+        font-weight: 800;
+        letter-spacing: -0.5px;
+        margin-bottom: 2px;
+      }
+      .stock-name {
+        font-size: 12px;
+        color: var(--muted);
+        margin-bottom: 14px;
+      }
+      .stock-meta {
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
+        margin-bottom: 12px;
+      }
+      .stock-note {
+        font-size: 12px;
+        color: var(--muted);
+        line-height: 1.6;
+      }
+      .stock-actions {
+        display: flex;
+        gap: 6px;
+        margin-top: 14px;
+      }
+      .priority-dot {
+        position: absolute;
+        top: 16px;
+        right: 16px;
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+      }
+      .dot-high {
+        background: var(--accent);
+      }
+      .dot-medium {
+        background: var(--warn);
+      }
+      .dot-low {
+        background: var(--muted);
+      }
+      .form-row {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 14px;
+      }
+      .ticker-dropdown {
+        z-index: 9999 !important;
+      }
+    </style>
+  </head>
+  <body>
+    <aside class="sidebar">
+      <div class="sidebar-logo">
+        <div class="mark">IDX · Trading</div>
+        <h2>TRADE<span>LOG</span></h2>
+      </div>
+      <nav class="nav-section">
+        <div class="nav-label">Main</div>
+        <a class="nav-item" href="dashboard.html"
+          ><span class="icon">◈</span> Dashboard</a
+        >
+        <a class="nav-item" href="journal.html"
+          ><span class="icon">◎</span> Trade Journal</a
+        >
+        <a class="nav-item" href="plan.html"
+          ><span class="icon">◇</span> Trading Plan</a
+        >
+        <a class="nav-item active" href="watchlist.html"
+          ><span class="icon">◉</span> Watchlist</a
+        >
+      </nav>
+      <nav class="nav-section">
+        <div class="nav-label">Account</div>
+        <a
+          class="nav-item"
+          href="admin.html"
+          id="admin-link"
+          style="display: none"
+          ><span class="icon">⬡</span> Admin Panel</a
+        >
+        <button class="nav-item" onclick="signOut()">
+          <span class="icon">→</span> Sign Out
+        </button>
+      </nav>
+      <div class="sidebar-footer">
+        <div class="user-chip">
+          <div class="user-avatar" id="avatar">?</div>
+          <div class="user-info">
+            <div class="user-email" id="user-email">Loading...</div>
+          </div>
+        </div>
+      </div>
+    </aside>
+
+    <main class="main">
+      <div class="flex-between mb-6">
+        <div class="page-header" style="margin-bottom: 0">
+          <h1>Watchlist</h1>
+          <p>Stocks on your radar</p>
+        </div>
+        <div style="display: flex; gap: 10px; align-items: center">
+          <select
+            id="filter-priority"
+            onchange="applyFilter()"
+            style="width: auto; font-size: 12px; padding: 8px 12px"
+          >
+            <option value="">All Priorities</option>
+            <option value="high">High</option>
+            <option value="medium">Medium</option>
+            <option value="low">Low</option>
+          </select>
+          <select
+            id="filter-status-w"
+            onchange="applyFilter()"
+            style="width: auto; font-size: 12px; padding: 8px 12px"
+          >
+            <option value="">All Status</option>
+            <option value="watching">Watching</option>
+            <option value="ready">Ready to Trade</option>
+            <option value="avoided">Avoided</option>
+          </select>
+          <button class="btn btn-primary" onclick="openModal()">
+            + Add Stock
+          </button>
+        </div>
+      </div>
+
+      <div class="watchlist-grid" id="watchlist-grid">
+        <div class="empty-state" style="grid-column: 1/-1">
+          <div class="icon">◉</div>
+          <p>Your watchlist is empty. Add stocks to track.</p>
+        </div>
+      </div>
+    </main>
+
+    <div class="modal-overlay" id="modal">
+      <div class="modal">
+        <div class="modal-header">
+          <div class="modal-title" id="modal-title">Add to Watchlist</div>
+          <button class="modal-close" onclick="closeModal()">✕</button>
+        </div>
+
+        <input type="hidden" id="w-id" />
+
+        <div class="form-row">
+          <div class="form-group">
+            <label>Ticker (ketik untuk search)</label>
+            <input
+              type="text"
+              id="w-ticker"
+              placeholder="Cari ticker... (BBCA, TLKM, ...)"
+              autocomplete="off"
+            />
+          </div>
+          <div class="form-group">
+            <label>Company Name</label>
+            <input
+              type="text"
+              id="w-name"
+              readonly
+              style="
+                background: rgba(0, 229, 160, 0.03);
+                color: var(--muted);
+                cursor: default;
+              "
+            />
+          </div>
+        </div>
+
+        <div class="form-row">
+          <div class="form-group">
+            <label>Priority</label>
+            <select id="w-priority">
+              <option value="high">High (Action Soon)</option>
+              <option value="medium">Medium (Monitoring)</option>
+              <option value="low">Low (Wait & See)</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Status</label>
+            <select id="w-status">
+              <option value="watching">Watching</option>
+              <option value="ready">Ready to Trade</option>
+              <option value="avoided">Avoided</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="form-row">
+          <div class="form-group">
+            <label>Setup Type</label>
+            <input
+              type="text"
+              id="w-setup"
+              placeholder="e.g. Breakout, Support"
+            />
+          </div>
+          <div class="form-group">
+            <label>Sector</label>
+            <input
+              type="text"
+              id="w-sector"
+              readonly
+              style="
+                background: rgba(0, 229, 160, 0.03);
+                color: var(--muted);
+                cursor: default;
+              "
+            />
+          </div>
+        </div>
+
+        <div class="form-row">
+          <div class="form-group">
+            <label>Target Entry (IDR)</label>
+            <input type="number" id="w-entry" placeholder="e.g. 9000" />
+          </div>
+          <div class="form-group">
+            <label>Stop Loss (IDR)</label>
+            <input type="number" id="w-sl" placeholder="e.g. 8500" />
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label>Notes / Analysis</label>
+          <textarea
+            id="w-notes"
+            placeholder="Why are you watching this?"
+          ></textarea>
+        </div>
+
+        <div style="display: flex; gap: 10px; justify-content: flex-end">
+          <button class="btn btn-ghost" onclick="closeModal()">Cancel</button>
+          <button class="btn btn-primary" onclick="saveStock()">Save</button>
+        </div>
+      </div>
+    </div>
+
+    <script src="../js/config.js"></script>
+    <script src="../js/auth.js"></script>
+    <script src="../js/idx-tickers.js"></script>
+    <script src="../js/ticker-select.js"></script>
+    <script>
+      let allStocks = [];
+      let userId = null;
+      let tickerSelect = null;
+
+      (async () => {
+        const user = await initAuth();
+        if (!user) return;
+        userId = user.id;
+        document.getElementById("user-email").textContent = user.email;
+        document.getElementById("avatar").textContent =
+          user.email[0].toUpperCase();
+
+        const { data: profile } = await sb
+          .from("profiles")
+          .select("role")
+          .eq("id", user.id)
+          .single();
+        if (profile?.role === "admin")
+          document.getElementById("admin-link").style.display = "flex";
+
+        await loadStocks();
+      })();
+
+      async function loadStocks() {
+        const { data } = await sb
+          .from("watchlist")
+          .select("*")
+          .eq("user_id", userId)
+          .order("priority");
+        allStocks = data || [];
+        applyFilter();
+      }
+
+      function applyFilter() {
+        const priority = document.getElementById("filter-priority").value;
+        const status = document.getElementById("filter-status-w").value;
+        let filtered = allStocks.filter((s) => {
+          if (priority && s.priority !== priority) return false;
+          if (status && s.status !== status) return false;
+          return true;
+        });
+        renderStocks(filtered);
+      }
+
+      function renderStocks(stocks) {
+        const grid = document.getElementById("watchlist-grid");
+        if (!stocks.length) {
+          grid.innerHTML =
+            '<div class="empty-state" style="grid-column:1/-1"><div class="icon">◉</div><p>No stocks found.</p></div>';
+          return;
+        }
+        grid.innerHTML = stocks
+          .map(
+            (s) => `
+        <div class="stock-card priority-${s.priority}">
+          <div class="priority-dot dot-${s.priority}"></div>
+          <div class="stock-ticker">${s.ticker}</div>
+          <div class="stock-name">${s.company_name || "—"} · ${s.sector || "—"}</div>
+          <div class="stock-meta">
+            <span class="badge badge-${s.status === "ready" ? "win" : s.status === "avoided" ? "loss" : "open"}">${s.status?.toUpperCase()}</span>
+            ${s.setup ? `<span class="badge" style="background:rgba(255,255,255,0.06);color:var(--muted)">${s.setup}</span>` : ""}
+          </div>
+          ${s.target_entry ? `<div class="text-sm" style="margin-bottom:6px">Entry: <span style="color:var(--text)">${Number(s.target_entry).toLocaleString("id-ID")}</span> · SL: <span style="color:var(--danger)">${s.stop_loss ? Number(s.stop_loss).toLocaleString("id-ID") : "—"}</span></div>` : ""}
+          ${s.notes ? `<div class="stock-note">${s.notes}</div>` : ""}
+          <div class="stock-actions">
+            <button class="btn btn-ghost" style="flex:1;font-size:11px;padding:6px" onclick="editStock('${s.id}')">Edit</button>            
+            <button class="btn btn-primary" style="flex:1;font-size:11px;padding:6px" onclick='tradeThis(${JSON.stringify(s)})'>→ Trade</button>
+            <button class="btn btn-danger" style="font-size:11px;padding:6px 10px" onclick="deleteStock('${s.id}')">✕</button>
+          </div>
+        </div>
+      `,
+          )
+          .join("");
+      }
+
+      function openModal() {
+        document.getElementById("w-id").value = "";
+        document.getElementById("modal-title").textContent = "Add to Watchlist";
+        [
+          "w-ticker",
+          "w-name",
+          "w-setup",
+          "w-entry",
+          "w-sl",
+          "w-notes",
+          "w-sector",
+        ].forEach((id) => {
+          const el = document.getElementById(id);
+          if (el) el.value = "";
+        });
+
+        // Sekarang elemen ini sudah ada di HTML
+        document.getElementById("w-priority").value = "high";
+        document.getElementById("w-status").value = "watching";
+        document.getElementById("modal").classList.add("open");
+
+        setTimeout(() => {
+          if (tickerSelect) tickerSelect.clear();
+          tickerSelect = new TickerSelect({
+            inputId: "w-ticker",
+            nameFieldId: "w-name",
+            sectorFieldId: "w-sector",
+          });
+        }, 50);
+      }
+
+      function editStock(id) {
+        const s = allStocks.find((x) => x.id === id);
+        if (!s) return;
+        document.getElementById("w-id").value = s.id;
+        document.getElementById("modal-title").textContent = "Edit Stock";
+        document.getElementById("w-name").value = s.company_name || "";
+        document.getElementById("w-sector").value = s.sector || "";
+        document.getElementById("w-priority").value = s.priority || "medium";
+        document.getElementById("w-status").value = s.status || "watching";
+        document.getElementById("w-setup").value = s.setup || "";
+        document.getElementById("w-entry").value = s.target_entry || "";
+        document.getElementById("w-sl").value = s.stop_loss || "";
+        document.getElementById("w-notes").value = s.notes || "";
+        document.getElementById("modal").classList.add("open");
+
+        setTimeout(() => {
+          tickerSelect = new TickerSelect({
+            inputId: "w-ticker",
+            nameFieldId: "w-name",
+            sectorFieldId: "w-sector",
+          });
+          tickerSelect.setValue(s.ticker);
+        }, 50);
+      }
+
+      function closeModal() {
+        document.getElementById("modal").classList.remove("open");
+      }
+
+      async function saveStock() {
+        const id = document.getElementById("w-id").value;
+        const ticker = document
+          .getElementById("w-ticker")
+          .value.trim()
+          .toUpperCase();
+        if (!ticker) {
+          alert("Ticker is required");
+          return;
+        }
+
+        const payload = {
+          user_id: userId,
+          ticker,
+          company_name: document.getElementById("w-name").value.trim() || null,
+          sector: document.getElementById("w-sector").value || null,
+          priority: document.getElementById("w-priority").value,
+          status: document.getElementById("w-status").value,
+          setup: document.getElementById("w-setup").value.trim() || null,
+          target_entry:
+            parseFloat(document.getElementById("w-entry").value) || null,
+          stop_loss: parseFloat(document.getElementById("w-sl").value) || null,
+          notes: document.getElementById("w-notes").value.trim() || null,
+        };
+
+        const { error } = id
+          ? await sb.from("watchlist").update(payload).eq("id", id)
+          : await sb.from("watchlist").insert(payload);
+
+        if (error) {
+          alert("Error: " + error.message);
+          return;
+        }
+        closeModal();
+        await loadStocks();
+      }
+
+      async function deleteStock(id) {
+        if (!confirm("Remove from watchlist?")) return;
+        await sb.from("watchlist").delete().eq("id", id);
+        await loadStocks();
+      }
+
+      function tradeThis(s) {
+        const params = new URLSearchParams({
+          ticker: s.ticker || "",
+          name: s.company_name || "",
+          sector: s.sector || "",
+          entry: s.target_entry || "",
+          sl: s.stop_loss || "",
+        });
+        window.location.href = `journal.html?${params.toString()}`;
+      }
+    </script>
+  </body>
+</html>

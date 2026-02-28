@@ -1,0 +1,6 @@
+# Active config — jangan di-commit, berisi credentials
+js/config.js
+
+# Environment configs — simpan local saja, jangan di-commit
+js/config.dev.js
+js/config.prod.js
