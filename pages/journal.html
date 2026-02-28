@@ -21,6 +21,7 @@
 
     <link rel="stylesheet" href="../css/shared.css" />
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 
     <style>
       .filter-bar {
@@ -84,7 +85,7 @@
         <input
           type="text"
           id="filter-ticker"
-          placeholder="Filter ticker..."
+          placeholder="Filter by ticker..."
           oninput="applyFilters()"
         />
         <select id="filter-status" onchange="applyFilters()">
@@ -92,6 +93,29 @@
           <option value="open">Open</option>
           <option value="closed">Closed</option>
         </select>
+        <div style="display: flex; gap: 8px; align-items: center;">
+          <label style="font-size: 12px; color: var(--muted); white-space: nowrap;">From:</label>
+          <input
+            type="text"
+            id="filter-date-from"
+            placeholder="Select start date"
+            onchange="applyFilters()"
+            style="flex: 0 1 140px;"
+          />
+        </div>
+        <div style="display: flex; gap: 8px; align-items: center;">
+          <label style="font-size: 12px; color: var(--muted); white-space: nowrap;">To:</label>
+          <input
+            type="text"
+            id="filter-date-to"
+            placeholder="Select end date"
+            onchange="applyFilters()"
+            style="flex: 0 1 140px;"
+          />
+        </div>
+        <button class="btn btn-ghost" onclick="exportToExcel()" style="padding:10px 14px; font-size:12px">
+          📥 Export
+        </button>
       </div>
 
       <div class="card">
@@ -350,7 +374,7 @@
       let allTrades = [];
       let userId = null;
       let tickerSelect = null;
-      let fpDate, fpExitDate, fpEntryDate; // Variable untuk flatpickr instances
+      let fpDate, fpExitDate, fpEntryDate, fpFilterFrom, fpFilterTo; // Variable untuk flatpickr instances
 
       (async () => {
         // load shared layout components (sidebar etc)
@@ -381,6 +405,16 @@
         fpDate = flatpickr("#f-date", fpConfig);
         fpExitDate = flatpickr("#f-exitdate", fpConfig);
         fpEntryDate = flatpickr("#ne-date", fpConfig);
+        
+        // Initialize filter date pickers with range linking
+        fpFilterFrom = flatpickr("#filter-date-from", { 
+          ...fpConfig,
+          onChange: () => applyFilters()
+        });
+        fpFilterTo = flatpickr("#filter-date-to", { 
+          ...fpConfig,
+          onChange: () => applyFilters()
+        });
 
         // ... kode lainnya ...
         await loadTrades();
@@ -674,12 +708,110 @@
           .getElementById("filter-ticker")
           .value.toUpperCase();
         const status = document.getElementById("filter-status").value;
+        const dateFromInput = document.getElementById("filter-date-from").value;
+        const dateToInput = document.getElementById("filter-date-to").value;
+        
         const filtered = allTrades.filter((t) => {
           if (ticker && !t.ticker.includes(ticker)) return false;
           if (status && t.status !== status) return false;
+          if (dateFromInput && t.trade_date < dateFromInput) return false;
+          if (dateToInput && t.trade_date > dateToInput) return false;
           return true;
         });
         renderTrades(filtered);
+      }
+
+      // Export filtered trades to Excel (XLSX)
+      function exportToExcel() {
+        const ticker = document.getElementById("filter-ticker").value.toUpperCase();
+        const status = document.getElementById("filter-status").value;
+        const dateFrom = document.getElementById("filter-date-from").value;
+        const dateTo = document.getElementById("filter-date-to").value;
+        
+        const filtered = allTrades.filter((t) => {
+          if (ticker && !t.ticker.includes(ticker)) return false;
+          if (status && t.status !== status) return false;
+          if (dateFrom && t.trade_date < dateFrom) return false;
+          if (dateTo && t.trade_date > dateTo) return false;
+          return true;
+        });
+
+        if (!filtered.length) {
+          toast('No trades to export', 'error');
+          return;
+        }
+
+        // Create workbook (styles are best-effort; many browsers/Excel versions ignore them)
+        const wb = XLSX.utils.book_new();
+        
+        // Prepare data with headers
+        const headers = ['Date', 'Ticker', 'Company', 'Sector', 'Status', 'Avg Entry', 'Exit', 'Lot', 'P&L (IDR)', 'R:R', 'Setup', 'Notes'];
+        const data = filtered.map(t => [
+          t.trade_date || '',
+          t.ticker || '',
+          t.company_name || '',
+          t.sector || '',
+          t.status || '',
+          t.avg_entry_price || t.entry_price || '',
+          t.exit_price || '',
+          t.total_lot || t.lot_size || '',
+          t.pnl || '',
+          t.rr || '',
+          t.setup || '',
+          t.notes || ''
+        ]);
+
+        // Add a simple summary calculation (won/loss/open and totals)
+        const winTrades = filtered.filter(t => t.status === 'closed' && t.pnl > 0).length;
+        const lossTrades = filtered.filter(t => t.status === 'closed' && t.pnl < 0).length;
+        const openTrades = filtered.filter(t => t.status === 'open').length;
+        const totalPnL = filtered.reduce((sum, t) => sum + (t.pnl || 0), 0);
+        const avgRR = filtered.length > 0 
+          ? (filtered.reduce((sum, t) => sum + (parseFloat(t.rr) || 0), 0) / filtered.length).toFixed(2)
+          : 0;
+
+        // Build sheet from array data
+        const ws = XLSX.utils.aoa_to_sheet([headers, ...data]);
+        
+        // set reasonable column widths
+        ws['!cols'] = [
+          { wch: 12 }, { wch: 10 }, { wch: 20 }, { wch: 15 }, { wch: 10 },
+          { wch: 12 }, { wch: 12 }, { wch: 10 }, { wch: 15 }, { wch: 8 },
+          { wch: 25 }, { wch: 30 }
+        ];
+
+        // NOTE: Styling in browser-generated XLSX is unreliable; Excel often strips the simple styles below.
+        // We still make the header row bold so that it usually carries over.
+        const hdrRange = XLSX.utils.decode_range(ws['!ref']);
+        for (let C = hdrRange.s.c; C <= hdrRange.e.c; ++C) {
+          const cell = ws[XLSX.utils.encode_cell({ r: 0, c: C })];
+          if (cell) {
+            cell.s = { font: { bold: true } };
+          }
+        }
+
+        // add summary lines a few rows below the data
+        const summaryRow = data.length + 3;
+        const summaryData = [
+          ['Total Trades', filtered.length],
+          ['Closed Trades', filtered.filter(t => t.status === 'closed').length],
+          ['Open Trades', openTrades],
+          ['Win Trades', winTrades],
+          ['Loss Trades', lossTrades],
+          ['Win Rate', winTrades + lossTrades > 0 ? ((winTrades / (winTrades + lossTrades)) * 100).toFixed(1) + '%' : 'N/A'],
+          ['Total P&L', 'Rp ' + totalPnL.toLocaleString('id-ID')],
+          ['Avg R:R', avgRR]
+        ];
+        summaryData.forEach((row, idx) => {
+          const r = summaryRow + idx;
+          ws[XLSX.utils.encode_cell({ r, c: 0 })] = { v: row[0], s: { font: { bold: true } } };
+          ws[XLSX.utils.encode_cell({ r, c: 1 })] = { v: row[1] };
+        });
+
+        XLSX.utils.book_append_sheet(wb, ws, 'Trades');
+        const fileName = `trades_${dateFrom || 'all'}_to_${dateTo || 'today'}.xlsx`;
+        XLSX.writeFile(wb, fileName);
+        toast(`✓ Exported ${filtered.length} trades to Excel`, 'success');
       }
     </script>
   </body>
