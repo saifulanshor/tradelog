@@ -66,48 +66,8 @@
     </style>
   </head>
   <body>
-    <aside class="sidebar">
-      <div class="sidebar-logo">
-        <div class="mark">IDX · Trading</div>
-        <h2>TRADE<span>LOG</span></h2>
-      </div>
-      <nav class="nav-section">
-        <div class="nav-label">Main</div>
-        <a class="nav-item" href="dashboard.html"
-          ><span class="icon">◈</span> Dashboard</a
-        >
-        <a class="nav-item active" href="journal.html"
-          ><span class="icon">◎</span> Trade Journal</a
-        >
-        <a class="nav-item" href="plan.html"
-          ><span class="icon">◇</span> Trading Plan</a
-        >
-        <a class="nav-item" href="watchlist.html"
-          ><span class="icon">◉</span> Watchlist</a
-        >
-      </nav>
-      <nav class="nav-section">
-        <div class="nav-label">Account</div>
-        <a
-          class="nav-item"
-          href="admin.html"
-          id="admin-link"
-          style="display: none"
-          ><span class="icon">⬡</span> Admin Panel</a
-        >
-        <button class="nav-item" onclick="signOut()">
-          <span class="icon">→</span> Sign Out
-        </button>
-      </nav>
-      <div class="sidebar-footer">
-        <div class="user-chip">
-          <div class="user-avatar" id="avatar">?</div>
-          <div class="user-info">
-            <div class="user-email" id="user-email">Loading...</div>
-          </div>
-        </div>
-      </div>
-    </aside>
+    <!-- sidebar will be injected by layout.js -->
+    <div id="sidebar-container"></div>
 
     <main class="main">
       <div class="flex-between mb-6">
@@ -383,6 +343,7 @@
     <script src="../js/auth.js"></script>
     <!-- <script src="../js/idx-tickers.js"></script> -->
     <script src="../js/ticker-select.js"></script>
+    <script src="../js/layout.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
 
     <script>
@@ -392,12 +353,28 @@
       let fpDate, fpExitDate, fpEntryDate; // Variable untuk flatpickr instances
 
       (async () => {
+        // load shared layout components (sidebar etc)
+        await applyLayout();
         const user = await initAuth();
         if (!user) return;
         userId = user.id;
         document.getElementById("user-email").textContent = user.email;
         document.getElementById("avatar").textContent =
           user.email[0].toUpperCase();
+
+          // show admin link if user has admin role
+          try {
+            const { data: profile } = await sb
+              .from('profiles')
+              .select('role')
+              .eq('id', userId)
+              .single();
+            if (profile?.role === 'admin') {
+              document.getElementById('admin-link').style.display = 'flex';
+            }
+          } catch (e) {
+            console.warn('could not fetch profile for admin link', e);
+          }
 
         // Inisialisasi Flatpickr
         const fpConfig = { dateFormat: "Y-m-d", theme: "dark" };

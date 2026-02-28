@@ -145,6 +145,29 @@
       </div>
     </div>
 
+    <!-- USER MANAGEMENT -->
+    <div class="card mb-6" id="users-card" style="display:none">
+      <div class="flex-between mb-4">
+        <div class="card-title" style="margin-bottom:0">Users</div>
+        <button class="btn btn-ghost" style="font-size:12px;padding:6px 14px" onclick="loadUsers()">Refresh</button>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Email</th>
+              <th>Role</th>
+              <th>Created</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody id="users-tbody">
+            <tr><td colspan="4" class="text-muted" style="padding:20px;text-align:center">Loading…</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
     <!-- INVITE USER -->
     <div class="card mb-6">
       <div class="card-title">Invite User Directly</div>
@@ -212,6 +235,7 @@
         return;
       }
 
+      await loadUsers();
       await loadRequests();
     })();
 
@@ -317,6 +341,82 @@
       } catch (err) {
         toast('Invite gagal: ' + err.message, 'error');
         return false;
+      }
+    }
+
+    // ----- user management helpers -----
+    async function loadUsers() {
+      const tbody = document.getElementById('users-tbody');
+      tbody.innerHTML = '<tr><td colspan="4" class="text-muted" style="padding:20px;text-align:center">Loading…</td></tr>';
+      try {
+        const token = (await sb.auth.getSession()).data.session?.access_token;
+        const res = await fetch(`${SUPABASE_URL}/functions/v1/user-management`, {
+          method: 'POST', headers: {'Content-Type':'application/json', 'Authorization': 'Bearer ' + token},
+          body: JSON.stringify({ action: 'list' })
+        });
+        const j = await res.json();
+        if (!res.ok) throw new Error(j.error || 'list failed');
+        renderUsers(j.users);
+      } catch (e) {
+        console.error('loadUsers error', e);
+        tbody.innerHTML = '<tr><td colspan="4" class="text-danger">Error loading users</td></tr>';
+      }
+    }
+
+    function renderUsers(users) {
+      const tbody = document.getElementById('users-tbody');
+      if (!users || users.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="4" class="text-muted" style="padding:20px;text-align:center">No users</td></tr>';
+        return;
+      }
+      tbody.innerHTML = users.map(u => {
+        const disabled = u.disabled ? ' (banned)' : '';
+        return `
+          <tr id="user-${u.id}">
+            <td>${u.email}${disabled}</td>
+            <td>${u.user_metadata?.role || ''}</td>
+            <td>${new Date(u.created_at).toLocaleDateString('id-ID')}</td>
+            <td>
+              <button class="btn btn-danger" onclick="deleteUser('${u.id}')" style="font-size:12px;padding:4px 8px">Delete</button>
+              <button class="btn btn-ghost" onclick="toggleBan('${u.id}', ${u.disabled})" style="font-size:12px;padding:4px 8px">${u.disabled ? 'Unban' : 'Ban'}</button>
+            </td>
+          </tr>
+        `;
+      }).join('');
+      document.getElementById('users-card').style.display = 'block';
+    }
+
+    async function deleteUser(id) {
+      if (!confirm('Delete this user? This cannot be undone.')) return;
+      try {
+        const token = (await sb.auth.getSession()).data.session?.access_token;
+        const res = await fetch(`${SUPABASE_URL}/functions/v1/user-management`, {
+          method: 'POST', headers:{'Content-Type':'application/json','Authorization': 'Bearer ' + token},
+          body: JSON.stringify({ action:'delete', user_id:id })
+        });
+        const j = await res.json();
+        if (!res.ok) throw new Error(j.error || 'delete failed');
+        document.getElementById('user-' + id)?.remove();
+        toast('User removed','success');
+      } catch (e) {
+        toast('Gagal menghapus user: ' + e.message,'error');
+      }
+    }
+
+    async function toggleBan(id, currentlyDisabled) {
+      const action = currentlyDisabled ? 'unban' : 'ban';
+      try {
+        const token = (await sb.auth.getSession()).data.session?.access_token;
+        const res = await fetch(`${SUPABASE_URL}/functions/v1/user-management`, {
+          method:'POST', headers:{'Content-Type':'application/json','Authorization': 'Bearer ' + token},
+          body: JSON.stringify({ action, user_id:id })
+        });
+        const j = await res.json();
+        if (!res.ok) throw new Error(j.error || 'ban/unban failed');
+        toast(currentlyDisabled ? 'User unbanned' : 'User banned','success');
+        loadUsers();
+      } catch(e) {
+        toast('Gagal: ' + e.message,'error');
       }
     }
 

@@ -480,6 +480,33 @@
       btn.disabled = true;
       btn.textContent = 'Submitting...';
 
+        // check if email already registered or already requested
+      try {
+        const [cs, cr] = await Promise.all([
+          fetch(`${SUPABASE_URL}/functions/v1/check-user`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email })
+          }),
+          sb.from('access_requests').select('id').eq('email', email).eq('status','pending').single()
+        ]);
+        const j = await cs.json();
+        if (j.exists) {
+          showMsg(msg, 'error', 'Email sudah terdaftar. Silakan login atau hubungi admin.');
+          btn.disabled = false;
+          btn.textContent = 'Submit Request';
+          return;
+        }
+        if (cr?.data) {
+          showMsg(msg, 'error', 'Permintaan akses dengan email ini sudah diajukan.');
+          btn.disabled = false;
+          btn.textContent = 'Submit Request';
+          return;
+        }
+      } catch (e) {
+        console.warn('pre-check failed', e);
+        // proceed anyway
+      }
+
       const { error } = await sb.from('access_requests').insert({ name, email, reason, status: 'pending' });
 
       if (error) {
