@@ -20,10 +20,10 @@ jobs:
 
       - name: Create config.js
         run: |
-          printf "const SUPABASE_URL = '%s';\nconst SUPABASE_ANON_KEY = '%s';\nconst ENV = 'prod';\n" \
-            "${{ secrets.SUPABASE_URL }}" \
-            "${{ secrets.SUPABASE_ANON_KEY }}" \
-            > js/config.js
+          echo "const SUPABASE_URL = '${{ secrets.SUPABASE_URL }}';" > js/config.js
+          echo "const SUPABASE_ANON_KEY = '${{ secrets.SUPABASE_ANON_KEY }}';" >> js/config.js
+          echo "const ENV = 'prod';" >> js/config.js
+          cat js/config.js
 
       - name: Deploy to GitHub Pages
         uses: peaceiris/actions-gh-pages@v3
