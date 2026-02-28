@@ -1,8 +1,4 @@
 # .github/workflows/deploy.yml
-#
-# Auto-deploy ke GitHub Pages setiap push ke branch main
-# Otomatis inject PROD config dari GitHub Secrets
-
 name: Deploy to GitHub Pages
 
 on:
@@ -14,6 +10,13 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      pages: write
+      id-token: write
+
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -23,11 +26,15 @@ jobs:
           echo "const SUPABASE_URL = '${{ secrets.SUPABASE_URL }}';" > js/config.js
           echo "const SUPABASE_ANON_KEY = '${{ secrets.SUPABASE_ANON_KEY }}';" >> js/config.js
           echo "const ENV = 'prod';" >> js/config.js
-          cat js/config.js
+
+      - name: Setup Pages
+        uses: actions/configure-pages@v4
+
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: ./
 
       - name: Deploy to GitHub Pages
-        uses: peaceiris/actions-gh-pages@v3
-        with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_dir: ./
-          exclude_assets: '.github,*.sh,supabase,js/config.dev.js,js/config.prod.js'
+        id: deployment
+        uses: actions/deploy-pages@v4
