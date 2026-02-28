@@ -1,5 +1,5 @@
 /**
- * TickerSelect — Searchable IDX Ticker Dropdown
+ * TickerSelect — Searchable Market Ticker Dropdown
  * Fetches live data from Supabase Edge Function → Yahoo Finance
  *
  * Usage:

@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Admin Panel – TradeLog IDX</title>
+  <title>Admin Panel – TradeLog</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Mono:wght@300;400;500&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="../css/shared.css"/>
@@ -55,7 +55,7 @@
   <!-- SIDEBAR -->
   <aside class="sidebar">
     <div class="sidebar-logo">
-      <div class="mark">IDX · Trading</div>
+      <div class="mark">TRADE · LOG</div>
       <h2>TRADE<span>LOG</span></h2>
     </div>
     <nav class="nav-section">
@@ -89,17 +89,11 @@
 
     <!-- UPLOAD TICKERS JSON -->
     <div class="card mb-6">
-      <div class="card-title">Upload IDX Tickers</div>
+      <div class="card-title">Upload Market Tickers</div>
       <p class="text-muted text-sm" style="margin-bottom:16px">
-        Download data saham IDX terlebih dahulu, lalu upload file JSON-nya di sini.<br>
-        <span style="color:var(--accent)">Step 1:</span> Buka
-        <a href="https://www.idx.co.id/primary/ListedCompany/GetCompanyProfiles?emitenType=s&start=0&length=2000"
-           target="_blank"
-           style="color:var(--accent);text-decoration:underline;font-size:12px">
-          link ini
-        </a>
-        di browser → Ctrl+S → simpan sebagai file JSON.<br>
-        <span style="color:var(--accent)">Step 2:</span> Upload file JSON tersebut di bawah.
+        Upload a list of market tickers in JSON format. The system will parse and store them for use in your trading journal.<br>
+        <span style="color:var(--accent)">Step 1:</span> Prepare a JSON file with ticker data (e.g., from your broker or market data provider).<br>
+        <span style="color:var(--accent)">Step 2:</span> Upload the file below.
       </p>
 
       <!-- Drop zone -->
@@ -113,7 +107,7 @@
         ondrop="handleDrop(event)">
         <div style="font-size:28px;margin-bottom:8px">📂</div>
         <div style="font-size:13px;color:var(--text);margin-bottom:4px">Klik atau drag & drop file JSON di sini</div>
-        <div style="font-size:11px;color:var(--muted)">File dari idx.co.id/ListedCompany</div>
+        <div style="font-size:11px;color:var(--muted)">JSON file with ticker data</div>
         <input type="file" id="ticker-file" accept=".json,application/json"
           style="display:none" onchange="handleFileSelect(event)"/>
       </div>
@@ -480,29 +474,29 @@
         const stocks = json?.data ?? json?.Data ?? (Array.isArray(json) ? json : []);
 
         if (!stocks.length) {
-          throw new Error('Data kosong atau format tidak dikenali. Pastikan file dari URL IDX yang benar.');
+          throw new Error('No ticker data found in the uploaded file. Ensure your JSON file is properly formatted.');
         }
 
-        setUploadProgress(20, `Membaca ${stocks.length} data dari ${filename}...`);
+        setUploadProgress(20, `Reading ${stocks.length} records from ${filename}...`);
 
-        // Map IDX fields ke schema kita
+        // Map uploaded fields to our schema
         const now = new Date().toISOString();
         const tickers = stocks
-          .filter(s => s.KodeEmiten && s.EfekEmiten_Saham === true)
+          .filter(s => s.ticker || s.KodeEmiten) // Support both formats
           .map(s => ({
-            ticker:     s.KodeEmiten.trim().toUpperCase(),
-            name:       s.NamaEmiten?.trim() ?? s.KodeEmiten,
-            sector:     s.Sektor?.trim() ?? 'Other',
-            sub_sector: s.SubSektor?.trim() ?? null,
+            ticker:     (s.ticker || s.KodeEmiten).toString().trim().toUpperCase(),
+            name:       (s.name || s.NamaEmiten || s.ticker || s.KodeEmiten)?.toString().trim() ?? 'Unknown',
+            sector:     (s.sector || s.Sektor)?.toString().trim() ?? 'Other',
+            sub_sector: (s.sub_sector || s.SubSektor)?.toString().trim() ?? null,
             last_price: null,
             updated_at: now,
           }));
 
         if (!tickers.length) {
-          throw new Error(`Tidak ada ticker valid ditemukan. Pastikan file dari URL: idx.co.id/primary/ListedCompany/GetCompanyProfiles?emitenType=s`);
+          throw new Error('No valid ticker records found. Ensure your JSON contains ticker symbols and company names.');
         }
 
-        setUploadProgress(40, `${tickers.length} ticker valid, menyimpan ke database...`);
+        setUploadProgress(40, `${tickers.length} valid tickers, saving to database...`);
 
         // Upsert ke Supabase dalam chunks
         const chunkSize = 200;
@@ -536,7 +530,7 @@
           <input type="file" id="ticker-file" accept=".json,application/json"
             style="display:none" onchange="handleFileSelect(event)"/>`;
 
-        toast(`✓ ${saved} ticker IDX berhasil diimport`, 'success');
+        toast(`✓ ${saved} tickers berhasil diimport`, 'success');
 
       } catch (err) {
         console.error('Import error:', err);
